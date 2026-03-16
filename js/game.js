@@ -47,7 +47,7 @@ SB.Game = {
     lastTime: 0,
     tickAccumulator: 0,
     deathTimer: 0,
-    speedMultiplier: 1,
+    speedMultiplier: 2, // Default to 2x so things feel alive but not rushed
 
     // Agent config from creation screen
     agentConfig: null,
@@ -81,16 +81,7 @@ SB.Game = {
             if (document.getElementById('creationScreen') &&
                 document.getElementById('creationScreen').style.display !== 'none') return;
 
-            switch (e.key) {
-                case '1': self.speedMultiplier = 1; break;
-                case '2': self.speedMultiplier = 2; break;
-                case '3': self.speedMultiplier = 5; break;
-                case '4': self.speedMultiplier = 10; break;
-                case 'r':
-                case 'R':
-                    self._restart();
-                    break;
-            }
+            // No speed or reset keys — handled via menu
         });
     },
 

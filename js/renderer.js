@@ -152,9 +152,15 @@ SB.Renderer = {
         });
         fitBtn.title = 'Fit island';
 
+        var followBtn = makeBtn('\uD83C\uDFAF', function() {
+            self.camera.followAgent = true;
+        });
+        followBtn.title = 'Follow agent (F)';
+
         btnContainer.appendChild(zoomIn);
         btnContainer.appendChild(zoomOut);
         btnContainer.appendChild(fitBtn);
+        btnContainer.appendChild(followBtn);
         container.appendChild(btnContainer);
     },
 
@@ -1312,12 +1318,12 @@ SB.Renderer = {
         ctx.fillStyle = 'rgba(120, 90, 50, 0.3)';
         ctx.fillRect(hudLeft + 3, 0, 1, this.height);
 
-        var y = 28;
+        var y = 32;
         ctx.textAlign = 'left';
 
         // ── AGENT NAME ──
         ctx.fillStyle = '#e8d5a8';
-        ctx.font = 'bold 18px monospace';
+        ctx.font = 'bold 20px monospace';
         ctx.fillText(agent.agentName || 'Agent', hudX, y);
 
         // Day counter (right side)
@@ -1326,11 +1332,11 @@ SB.Renderer = {
         var timeIcon = time.isNight ? '\uD83C\uDF19' : '\u2600\uFE0F';
         var dayStr = timeIcon + ' Day ' + (time.dayCount + 1);
         ctx.fillText(dayStr, hudRight - ctx.measureText(dayStr).width, y);
-        y += 8;
+        y += 22;
 
         // Traits
         if (agent.personalityTraits && agent.personalityTraits.length > 0) {
-            ctx.font = '9px monospace';
+            ctx.font = '10px monospace';
             ctx.fillStyle = '#6a5a44';
             var traitStr = '';
             for (var ti = 0; ti < agent.personalityTraits.length; ti++) {
@@ -1338,7 +1344,7 @@ SB.Renderer = {
                 if (trait) traitStr += trait.icon + ' ' + trait.name + '  ';
             }
             if (traitStr) ctx.fillText(traitStr.trim(), hudX, y);
-            y += 4;
+            y += 12;
         }
 
         // Time progress bar
@@ -1351,7 +1357,7 @@ SB.Renderer = {
 
         // ── STATUS ──
         ctx.fillStyle = '#7a6a50';
-        ctx.font = '8px monospace';
+        ctx.font = 'bold 10px monospace';
         ctx.fillText('STATUS', hudX, y);
         y += 14;
 
@@ -1363,7 +1369,7 @@ SB.Renderer = {
         ctx.fill();
 
         ctx.fillStyle = alive ? '#c8e8a8' : '#ff6666';
-        ctx.font = 'bold 12px monospace';
+        ctx.font = 'bold 13px monospace';
         var statusText = alive ? agent.status : 'DEAD';
         if (statusText.length > 26) statusText = statusText.substring(0, 25) + '...';
         ctx.fillText(statusText, hudX + 14, y);
@@ -1396,7 +1402,7 @@ SB.Renderer = {
 
         // ── VITALS ──
         ctx.fillStyle = '#7a6a50';
-        ctx.font = '8px monospace';
+        ctx.font = 'bold 10px monospace';
         ctx.fillText('VITALS', hudX, y);
         y += 14;
 
@@ -1426,7 +1432,7 @@ SB.Renderer = {
 
         // ── INVENTORY ──
         ctx.fillStyle = '#7a6a50';
-        ctx.font = '8px monospace';
+        ctx.font = 'bold 10px monospace';
         ctx.fillText('INVENTORY', hudX, y);
         y += 16;
 
@@ -1448,8 +1454,8 @@ SB.Renderer = {
             this._hudLine(ctx, hudX, y, hudW);
             y += 16;
 
-            ctx.fillStyle = '#7a6a50';
-            ctx.font = '8px monospace';
+            ctx.fillStyle = '#9a8868';
+            ctx.font = 'bold 10px monospace';
             ctx.fillText('BUILDINGS', hudX, y);
             y += 14;
 
@@ -1479,8 +1485,8 @@ SB.Renderer = {
         this._hudLine(ctx, hudX, y, hudW);
         y += 16;
 
-        ctx.fillStyle = '#7a6a50';
-        ctx.font = '8px monospace';
+        ctx.fillStyle = '#9a8868';
+        ctx.font = 'bold 10px monospace';
         ctx.fillText('EXPLORED', hudX, y);
 
         var exploredPct = world.getRevealedPercent();
@@ -1509,12 +1515,12 @@ SB.Renderer = {
             this._hudLine(ctx, hudX, y, hudW);
             y += 16;
 
-            ctx.fillStyle = '#7a6a50';
-            ctx.font = '8px monospace';
+            ctx.fillStyle = '#9a8868';
+            ctx.font = 'bold 10px monospace';
             ctx.fillText('THOUGHTS', hudX, y);
             y += 14;
 
-            ctx.font = '9px monospace';
+            ctx.font = '10px monospace';
             var tCount = Math.min(agent.thoughts.length, 3);
             for (var thi = 0; thi < tCount; thi++) {
                 var thAlpha = 0.6 - (thi * 0.15);
@@ -1532,8 +1538,8 @@ SB.Renderer = {
             this._hudLine(ctx, hudX, y, hudW);
             y += 16;
 
-            ctx.fillStyle = '#7a6a50';
-            ctx.font = '8px monospace';
+            ctx.fillStyle = '#9a8868';
+            ctx.font = 'bold 10px monospace';
             ctx.fillText('KNOWLEDGE', hudX, y);
             y += 14;
 
@@ -1549,52 +1555,30 @@ SB.Renderer = {
                 ctx.fillText(kText, kx, y);
                 kx += kWidth;
             }
-            y += 8;
+            y += 18;
         }
 
-        // ── LOG (anchored to bottom area) ──
-        var logY = Math.max(y + 12, this.height - 140);
-        this._hudLine(ctx, hudX, logY, hudW);
-        logY += 16;
+        // ── LOG ──
+        this._hudLine(ctx, hudX, y, hudW);
+        y += 18;
 
-        ctx.fillStyle = '#7a6a50';
-        ctx.font = '8px monospace';
-        ctx.fillText('LOG', hudX, logY);
-        logY += 14;
+        ctx.fillStyle = '#9a8868';
+        ctx.font = 'bold 10px monospace';
+        ctx.fillText('LOG', hudX, y);
+        y += 16;
 
-        ctx.font = '9px monospace';
+        ctx.font = '10px monospace';
         var logCount = Math.min(agent.log.length, 6);
         for (var li = 0; li < logCount; li++) {
             var entry = agent.log[li];
-            var logAlpha = 0.55 - (li * 0.08);
-            ctx.fillStyle = 'rgba(170, 155, 130, ' + logAlpha + ')';
+            var logAlpha = 0.6 - (li * 0.08);
+            ctx.fillStyle = 'rgba(180, 165, 140, ' + logAlpha + ')';
             var logText = entry.time + ': ' + entry.message;
-            if (logText.length > 36) logText = logText.substring(0, 35) + '...';
-            ctx.fillText(logText, hudX, logY);
-            logY += 12;
+            if (logText.length > 34) logText = logText.substring(0, 33) + '...';
+            ctx.fillText(logText, hudX, y);
+            y += 14;
         }
 
-        // ── BOTTOM BAR ──
-        var barH = 28;
-        ctx.fillStyle = '#120e0a';
-        ctx.fillRect(hudLeft, this.height - barH, this.hudWidth, barH);
-        ctx.fillStyle = '#3a2a18';
-        ctx.fillRect(hudLeft, this.height - barH, this.hudWidth, 1);
-
-        var bottomY = this.height - 10;
-        ctx.font = '10px monospace';
-        var speeds = [1, 2, 5, 10];
-        var speedLabels = ['1x', '2x', '5x', '10x'];
-        var bsx = hudX;
-        for (var si = 0; si < speeds.length; si++) {
-            var active = SB.Game.speedMultiplier === speeds[si];
-            ctx.fillStyle = active ? '#c8a858' : '#3a3028';
-            ctx.fillText(speedLabels[si], bsx, bottomY);
-            bsx += 30;
-        }
-        ctx.fillStyle = '#4a3a28';
-        ctx.font = '9px monospace';
-        ctx.fillText('[F] follow  [R] reset', bsx + 8, bottomY);
     },
 
     _hudLine: function(ctx, x, y, w) {
