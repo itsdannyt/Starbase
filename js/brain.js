@@ -179,9 +179,29 @@ SB.Discoveries = {
 };
 
 // ============================================
-// BRAIN - Discovery Engine + Thought Generator
+// MOOD DEFINITIONS
+// ============================================
+SB.Moods = {
+    confused:  { label: 'Confused',  color: '#9988cc' },
+    anxious:   { label: 'Anxious',   color: '#cc8844' },
+    desperate: { label: 'Desperate', color: '#dd4444' },
+    tired:     { label: 'Tired',     color: '#7788aa' },
+    focused:   { label: 'Focused',   color: '#44aadd' },
+    content:   { label: 'Content',   color: '#66bb66' },
+    proud:     { label: 'Proud',     color: '#ddaa44' },
+    excited:   { label: 'Excited',   color: '#ee8844' },
+    peaceful:  { label: 'Peaceful',  color: '#88bbaa' },
+};
+
+// ============================================
+// BRAIN - Full AI System
 // ============================================
 SB.Brain = {
+
+    // Track day/night transitions
+    _wasNight: false,
+
+    // ── Discovery Engine ──
     checkDiscoveries: function(agent, world) {
         for (var id in SB.Discoveries) {
             if (!SB.Discoveries.hasOwnProperty(id)) continue;
@@ -198,10 +218,13 @@ SB.Brain = {
                 var thought = disc.thoughts[Math.floor(Math.random() * disc.thoughts.length)];
                 agent.addThought(thought);
                 agent.addLog('Discovered: ' + disc.name);
+                agent.mood = 'excited';
+                agent.moodTimer = 60;
             }
         }
     },
 
+    // ── Personality Modifier ──
     getModifier: function(agent, category) {
         if (!agent.personalityTraits) return 1.0;
         var mod = 1.0;
@@ -214,128 +237,286 @@ SB.Brain = {
         return mod;
     },
 
+    // ── Mood System ──
+    updateMood: function(agent, world, time) {
+        // Mood timer: explicit moods (proud, excited) decay over time
+        if (agent.moodTimer > 0) {
+            agent.moodTimer--;
+            if (agent.moodTimer <= 0) agent.mood = '';
+        }
+
+        // Don't override explicit moods that haven't expired
+        if (agent.moodTimer > 0) return;
+
+        // Derive mood from state
+        if (agent.ticksAlive < 15) {
+            agent.mood = 'confused';
+        } else if (agent.hunger < 15 || agent.energy < 10) {
+            agent.mood = 'desperate';
+        } else if (agent.hunger < 35 || agent.energy < 25) {
+            agent.mood = 'anxious';
+        } else if (agent.energy < 40 && time.isNight) {
+            agent.mood = 'tired';
+        } else if (agent.isSleeping) {
+            agent.mood = 'peaceful';
+        } else if (agent.status && agent.status.indexOf('Build') >= 0) {
+            agent.mood = 'focused';
+        } else if (agent.status && (agent.status.indexOf('Chop') >= 0 || agent.status.indexOf('Min') >= 0 || agent.status.indexOf('Gather') >= 0)) {
+            agent.mood = 'focused';
+        } else if (agent.hunger > 70 && agent.energy > 70) {
+            agent.mood = 'content';
+        } else {
+            agent.mood = '';
+        }
+    },
+
+    // ── Event Reactions ──
+    // Called from agent.js when specific things happen
+    reactToEvent: function(agent, event, data) {
+        var t = agent.personalityTraits || [];
+        var pick = function(arr) { return arr[Math.floor(Math.random() * arr.length)]; };
+
+        switch (event) {
+            case 'action_complete':
+                var name = data.action;
+                var count = agent.stats.actionCounts[name] || 0;
+
+                // First-time reactions
+                if (count === 1) {
+                    if (name === 'chopTree') agent.addThought(pick(['Got my first wood!', 'That was harder than I thought.', 'Timber!']));
+                    else if (name === 'mineStone') agent.addThought(pick(['My hands are sore, but I got stone.', 'Heavy stuff.']));
+                    else if (name === 'gatherBerries') agent.addThought(pick(['These taste... not bad actually.', 'Food! Finally.']));
+                }
+                // Experience milestones
+                if (count === 10) {
+                    if (name === 'chopTree') agent.addThought(pick(["I'm getting good at this.", "Ten trees down. My arms are stronger now."]));
+                    else if (name === 'mineStone') agent.addThought(pick(["I know where to hit the rock now.", "Getting faster at this."]));
+                    else if (name === 'gatherBerries') agent.addThought(pick(["I know which bushes have the best berries.", "I can spot berry bushes from far away now."]));
+                }
+                if (count === 25) {
+                    agent.addThought(pick(["I've become an expert at this.", "Muscle memory kicking in.", "I could do this in my sleep."]));
+                }
+                break;
+
+            case 'ate_food':
+                if (agent.hunger < 40) {
+                    agent.addThought(pick(["I was starving. That saved me.", "Just in time.", "Can't let myself get that hungry again."]));
+                } else {
+                    if (Math.random() < 0.3) agent.addThought(pick(['That hit the spot.', 'Not bad.', 'Good enough.']));
+                }
+                break;
+
+            case 'slept':
+                if (data.onGround) {
+                    agent.addThought(pick(['My back hurts from the ground.', 'Rough night.', "I really need a proper bed."]));
+                } else {
+                    if (Math.random() < 0.4) agent.addThought(pick(['Slept well.', 'Feeling refreshed.', 'Good rest.']));
+                }
+                break;
+
+            case 'built':
+                agent.mood = 'proud';
+                agent.moodTimer = 80;
+                break;
+
+            case 'near_death':
+                agent.mood = 'desperate';
+                agent.moodTimer = 40;
+                if (agent.hunger < 10) {
+                    agent.addThought(pick(["I'm going to starve if I don't find food NOW.", "This is bad. Really bad.", "I can feel myself fading..."]));
+                } else {
+                    agent.addThought(pick(["I can barely keep my eyes open.", "If I collapse out here...", "Must... keep... going..."]));
+                }
+                agent.addLog('Dangerously low on ' + (agent.hunger < 10 ? 'food' : 'energy'));
+                break;
+
+            case 'harvest':
+                if (Math.random() < 0.5) {
+                    agent.addThought(pick(['The farm is paying off.', 'Fresh crops!', 'All that work was worth it.']));
+                }
+                break;
+        }
+    },
+
+    // ── Day/Night Transition Detector ──
+    checkTimeTransitions: function(agent, time) {
+        var isNight = time.isNight;
+        if (isNight && !this._wasNight) {
+            // Just became night
+            var nightThoughts = [
+                'Getting dark. Should be careful.',
+                'Night is falling.',
+                'The stars are coming out.',
+                'Another day survived.',
+            ];
+            if (agent.hasShelter) nightThoughts.push('Time to head back to shelter.');
+            else nightThoughts.push("I'll have to sleep under the stars again.");
+            agent.addThought(nightThoughts[Math.floor(Math.random() * nightThoughts.length)]);
+        } else if (!isNight && this._wasNight) {
+            // Just became dawn
+            var dawnThoughts = [
+                'A new day. What should I focus on?',
+                'Sunrise. Time to get to work.',
+                'Morning already.',
+                'The light feels good.',
+            ];
+            agent.addThought(dawnThoughts[Math.floor(Math.random() * dawnThoughts.length)]);
+        }
+        this._wasNight = isNight;
+    },
+
+    // ── Experience Tracker ──
+    trackAction: function(agent, actionName) {
+        if (!agent.stats.actionCounts) agent.stats.actionCounts = {};
+        if (!agent.stats.actionCounts[actionName]) agent.stats.actionCounts[actionName] = 0;
+        agent.stats.actionCounts[actionName]++;
+    },
+
+    // ── Thought Generator (rich, contextual) ──
     generateThought: function(agent, world, time) {
+        // ~1.2% chance per tick = ~1 thought every 15-20 seconds
         if (Math.random() > 0.012) return;
 
-        var thoughts = [];
+        var pool = [];
+        var hasTrait = function(t) { return agent.personalityTraits && agent.personalityTraits.indexOf(t) >= 0; };
 
-        // State-based thoughts
-        if (agent.hunger < 30) {
-            thoughts.push("I'm getting really hungry...", 'Need to find food soon.');
+        // === EARLY GAME (confused, learning) ===
+        if (agent.ticksAlive < 25) {
+            pool.push('Where am I?', 'This place is strange...', 'I need to figure this out.',
+                'What is this floating island?', 'How did I get here?');
         }
-        if (agent.energy < 30) {
-            thoughts.push('So tired...', 'I need to rest.');
-        }
-        if (time.isNight) {
-            thoughts.push("It's dark out.", 'The stars are beautiful tonight.');
-        }
-        if (agent.hunger > 80 && agent.energy > 80) {
-            thoughts.push('Feeling good right now.', "Life here isn't so bad.");
-        }
-        if (agent.ticksAlive < 20) {
-            thoughts.push('Where am I?', 'I need to figure out how to survive.', 'This place is strange...');
-        }
-        if (agent.ticksAlive > 50 && agent.knowledge.length === 0) {
-            thoughts.push('I should look around more carefully.', "There must be something useful nearby.");
+        if (agent.ticksAlive > 30 && agent.ticksAlive < 80 && agent.knowledge.length === 0) {
+            pool.push('I should look around more carefully.', 'There must be something useful nearby.',
+                'I feel like I should pay more attention to my surroundings.');
         }
 
-        // Personality-flavored thoughts
-        if (agent.personalityTraits) {
-            for (var i = 0; i < agent.personalityTraits.length; i++) {
-                var t = agent.personalityTraits[i];
-                if (t === 'explorer') thoughts.push("I wonder what's beyond that hill...", 'I should explore further.');
-                else if (t === 'builder') thoughts.push("No time for rest, there's work to do.", 'I should build something.');
-                else if (t === 'survivor') thoughts.push('I can handle this.', "Keep going. Don't give up.");
-                else if (t === 'gatherer') thoughts.push('Every bit of material counts.', 'I should stock up more.');
-                else if (t === 'genius') thoughts.push('What if I tried something different?', 'I have an idea...');
-                else if (t === 'farmer') thoughts.push('I should tend to my crops.', 'A good harvest solves everything.');
-            }
+        // === SURVIVAL STATE ===
+        if (agent.hunger < 20) {
+            pool.push("I'm starving...", 'Need food. Now.', 'My stomach feels like its eating itself.');
+        } else if (agent.hunger < 40) {
+            pool.push("Getting hungry.", 'I should find something to eat soon.', 'My stomach is growling.');
         }
 
-        if (thoughts.length > 0) {
-            agent.addThought(thoughts[Math.floor(Math.random() * thoughts.length)]);
+        if (agent.energy < 20) {
+            pool.push("So exhausted.", "Can't keep my eyes open.", 'I need to rest before I collapse.');
+        } else if (agent.energy < 40) {
+            pool.push('Getting tired.', 'Could use a break.', 'My legs are heavy.');
         }
-    }
-};
 
-// ============================================
-// LLM - Optional Ollama Integration
-// ============================================
-SB.LLM = {
-    available: false,
-    checking: false,
-    lastCall: 0,
-    callInterval: 45000,
-    model: 'llama3.2:3b',
+        // === WELL-FED & RESTED ===
+        if (agent.hunger > 75 && agent.energy > 75) {
+            pool.push('Feeling good.', "Life here isn't so bad.", 'Full belly, plenty of energy.',
+                'This is the best I\u2019ve felt in a while.');
+        }
 
-    checkAvailability: function() {
-        if (this.checking) return;
-        this.checking = true;
-        var self = this;
-        fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(2000) })
-            .then(function(r) {
-                if (r.ok) {
-                    self.available = true;
-                    console.log('[Starbase] Ollama detected! Enhanced AI thoughts enabled.');
-                }
-                self.checking = false;
-            })
-            .catch(function() {
-                self.available = false;
-                self.checking = false;
-                console.log('[Starbase] No Ollama detected. Using built-in brain.');
-            });
+        // === ACTIVITY-SPECIFIC ===
+        var status = agent.status || '';
+        if (status.indexOf('Chop') >= 0) {
+            pool.push('Swing... swing...', 'Good wood in this tree.', 'Arms are getting stronger.');
+            if (hasTrait('builder')) pool.push('This wood will make fine walls.');
+        }
+        if (status.indexOf('Mining') >= 0) {
+            pool.push('This rock is stubborn.', 'Chip... chip... almost.', 'Solid stone. Useful.');
+            if (hasTrait('builder')) pool.push('Perfect building material.');
+        }
+        if (status.indexOf('Gather') >= 0 || status.indexOf('berries') >= 0) {
+            pool.push('These bushes are full.', 'Nature provides.', 'Red ones are the sweetest.');
+            if (hasTrait('farmer')) pool.push('I should learn to grow these myself.');
+        }
+        if (status.indexOf('Build') >= 0) {
+            pool.push('Piece by piece.', 'Almost there.', 'This is coming together.',
+                'Place this here... and that there...');
+            if (hasTrait('builder')) pool.push("I was made for this.", "Best part of the day.");
+        }
+        if (status.indexOf('Explor') >= 0 || status.indexOf('Wander') >= 0) {
+            pool.push("What's over there?", 'New ground.', 'Never seen this part before.');
+            if (hasTrait('explorer')) pool.push("There's always more to find.", 'The unknown calls to me.');
+        }
+
+        // === TIME OF DAY ===
+        if (time.isNight && !agent.isSleeping) {
+            pool.push("It's so dark.", 'The stars are bright tonight.', 'Careful in the dark.');
+            if (!agent.hasShelter) pool.push('Wish I had somewhere safe to sleep.');
+        }
+
+        // === INVENTORY ===
+        if (agent.inventory.food === 0 && agent.knowledge.indexOf('berries_edible') >= 0) {
+            pool.push('No food left. Need to gather more.', "I can't let my supplies run out.");
+        }
+        if (agent.inventory.wood > 15) {
+            pool.push("That's a lot of wood. I should use some.", 'Wood pile is getting big.');
+        }
+        if (agent.inventory.stone > 10) {
+            pool.push('I have plenty of stone. Time to build something.', 'All this stone needs a purpose.');
+        }
+
+        // === PROGRESS REFLECTION ===
+        if (agent.totalBuildingsBuilt > 0 && Math.random() < 0.3) {
+            pool.push("I've built something real here.", 'This is starting to feel like home.',
+                'Look how far I\u2019ve come.');
+        }
+        if (agent.totalBuildingsBuilt >= 3) {
+            pool.push('A proper settlement. I should be proud.', 'From nothing to this. Not bad.');
+        }
+        if (agent.ticksAlive > 600 && agent.alive) {
+            pool.push("I've survived a long time now.", "I'm a survivor.", 'This island can\u2019t beat me.');
+        }
+
+        // === DAY COUNT ===
+        var day = time.dayCount + 1;
+        if (day === 2 && Math.random() < 0.5) {
+            pool.push('Day two. Still alive.', 'Made it through the first night.');
+        }
+        if (day >= 5 && Math.random() < 0.2) {
+            pool.push('Day ' + day + '. I\u2019ve lost count almost.', 'Been here ' + day + ' days now.');
+        }
+
+        // === PERSONALITY-SPECIFIC (always available as background flavor) ===
+        if (hasTrait('explorer')) {
+            pool.push("I wonder what's beyond the fog.", "There's so much to discover.",
+                'Every step reveals something new.', "I won't rest until I've seen it all.");
+        }
+        if (hasTrait('builder')) {
+            pool.push("There's always something to build.", 'I see potential in every resource.',
+                'A solid structure stands the test of time.', 'What should I construct next?');
+        }
+        if (hasTrait('survivor')) {
+            pool.push('Stay sharp. Stay alive.', 'I can endure anything.',
+                'Conserve energy. Think ahead.', "Others would've given up by now.");
+        }
+        if (hasTrait('gatherer')) {
+            pool.push('Every resource counts.', 'My stockpile grows.',
+                'Preparation is everything.', 'A full inventory is a safe inventory.');
+        }
+        if (hasTrait('genius')) {
+            pool.push('What if I tried a different approach?', 'I see patterns in everything.',
+                'Knowledge is the real resource.', 'There must be a smarter way.');
+        }
+        if (hasTrait('farmer')) {
+            pool.push('Good soil here.', 'Food security is everything.',
+                'The land provides if you treat it right.', "Nature's rhythms are predictable.");
+        }
+
+        // Pick a random thought from the pool
+        if (pool.length > 0) {
+            agent.addThought(pool[Math.floor(Math.random() * pool.length)]);
+        }
     },
 
-    requestThought: function(agent, world, time) {
-        if (!this.available) return;
-        var now = Date.now();
-        if (now - this.lastCall < this.callInterval) return;
-        this.lastCall = now;
+    // ── Main tick (called from agent.tick) ──
+    tick: function(agent, world, time) {
+        this.checkDiscoveries(agent, world);
+        this.updateMood(agent, world, time);
+        this.checkTimeTransitions(agent, time);
+        this.generateThought(agent, world, time);
 
-        var prompt = this._buildPrompt(agent, world, time);
-
-        fetch('http://localhost:11434/api/generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                model: this.model,
-                prompt: prompt,
-                stream: false,
-                options: { temperature: 0.8, num_predict: 50 }
-            }),
-            signal: AbortSignal.timeout(5000)
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (data.response) {
-                var thought = data.response.trim().split('\n')[0];
-                thought = thought.replace(/^["']|["']$/g, '');
-                if (thought.length > 2 && thought.length < 100) {
-                    agent.addThought(thought);
-                }
-            }
-        })
-        .catch(function() { /* silent */ });
-    },
-
-    _buildPrompt: function(agent, world, time) {
-        var traits = [];
-        if (agent.personalityTraits) {
-            for (var i = 0; i < agent.personalityTraits.length; i++) {
-                var p = SB.Personalities[agent.personalityTraits[i]];
-                if (p) traits.push(p.name);
-            }
+        // Near-death warning (once per danger period)
+        if ((agent.hunger < 10 || agent.energy < 10) && !agent._nearDeathWarned) {
+            this.reactToEvent(agent, 'near_death', {});
+            agent._nearDeathWarned = true;
         }
-
-        var s = 'You are ' + (agent.agentName || 'a survivor') + ', stranded on a floating island in space.\n';
-        s += 'Personality: ' + (traits.length > 0 ? traits.join(', ') : 'Unknown') + '\n';
-        s += 'Hunger: ' + Math.round(agent.hunger) + '/100, Energy: ' + Math.round(agent.energy) + '/100\n';
-        s += 'Inventory: ' + agent.inventory.wood + ' wood, ' + agent.inventory.stone + ' stone, ' + agent.inventory.food + ' food\n';
-        s += 'Day ' + (time.dayCount + 1) + (time.isNight ? ' (night)' : ' (day)') + '\n';
-        s += 'Currently: ' + agent.status + '\n';
-        s += 'Skills: ' + agent.knownActions.join(', ') + '\n';
-        s += '\nExpress ONE brief thought (max 12 words, first person, in character). No quotes.';
-        return s;
+        if (agent.hunger > 20 && agent.energy > 20) {
+            agent._nearDeathWarned = false;
+        }
     }
 };

@@ -66,9 +66,6 @@ SB.Game = {
 
         this._setupControls();
 
-        // Check for Ollama
-        if (SB.LLM) SB.LLM.checkAvailability();
-
         this.running = true;
         this.lastTime = performance.now();
         this.tickAccumulator = 0;

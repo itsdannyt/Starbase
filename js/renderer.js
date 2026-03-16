@@ -1291,259 +1291,314 @@ SB.Renderer = {
 
     _drawHUD: function(ctx, world, agent, time) {
         var hudLeft = this.viewportW;
-        var hudX = hudLeft + 16;
-        var hudW = this.hudWidth - 30;
-        var pad = 4;
+        var hudX = hudLeft + 20;
+        var hudW = this.hudWidth - 40;
+        var hudRight = hudX + hudW;
 
-        // Background
-        ctx.fillStyle = 'rgba(12, 12, 28, 0.94)';
+        // ── Background: dark wood/parchment feel ──
+        ctx.fillStyle = '#1a1612';
         ctx.fillRect(hudLeft, 0, this.hudWidth, this.height);
-        // Left accent line
-        ctx.fillStyle = 'rgba(70, 100, 180, 0.3)';
-        ctx.fillRect(hudLeft, 0, 2, this.height);
 
-        var y = 20;
+        // Subtle wood grain texture lines
+        ctx.fillStyle = 'rgba(60, 45, 30, 0.15)';
+        for (var gi = 0; gi < 20; gi++) {
+            var gy = gi * (this.height / 20) + ((gi * 37) % 15);
+            ctx.fillRect(hudLeft, gy, this.hudWidth, 1);
+        }
 
-        // ═══ AGENT HEADER ═══
-        // Name big and bold
-        ctx.fillStyle = '#8ac4ff';
-        ctx.font = 'bold 16px monospace';
+        // Left border accent (earthy)
+        ctx.fillStyle = '#3a2a18';
+        ctx.fillRect(hudLeft, 0, 3, this.height);
+        ctx.fillStyle = 'rgba(120, 90, 50, 0.3)';
+        ctx.fillRect(hudLeft + 3, 0, 1, this.height);
+
+        var y = 28;
         ctx.textAlign = 'left';
+
+        // ── AGENT NAME ──
+        ctx.fillStyle = '#e8d5a8';
+        ctx.font = 'bold 18px monospace';
         ctx.fillText(agent.agentName || 'Agent', hudX, y);
 
-        // Day/time on same line, right-aligned
-        ctx.fillStyle = '#778899';
+        // Day counter (right side)
+        ctx.fillStyle = '#8a7a60';
         ctx.font = '11px monospace';
-        var dayText = 'Day ' + (time.dayCount + 1);
-        ctx.fillText(dayText, hudX + hudW - ctx.measureText(dayText).width, y);
-        y += 6;
+        var timeIcon = time.isNight ? '\uD83C\uDF19' : '\u2600\uFE0F';
+        var dayStr = timeIcon + ' Day ' + (time.dayCount + 1);
+        ctx.fillText(dayStr, hudRight - ctx.measureText(dayStr).width, y);
+        y += 8;
 
-        // Time bar (thin, subtle)
-        this._drawFancyBar(ctx, hudX, y, hudW, 3, time.progress,
-            time.isNight ? '#2244aa' : '#cc9922', '#111122');
-        y += 10;
-
-        // Personality traits inline
+        // Traits
         if (agent.personalityTraits && agent.personalityTraits.length > 0) {
             ctx.font = '9px monospace';
-            ctx.fillStyle = '#556677';
+            ctx.fillStyle = '#6a5a44';
             var traitStr = '';
             for (var ti = 0; ti < agent.personalityTraits.length; ti++) {
                 var trait = SB.Personalities ? SB.Personalities[agent.personalityTraits[ti]] : null;
                 if (trait) traitStr += trait.icon + ' ' + trait.name + '  ';
             }
             if (traitStr) ctx.fillText(traitStr.trim(), hudX, y);
-            y += 6;
+            y += 4;
         }
 
-        // Thin divider
-        this._hudDivider(ctx, hudX, y, hudW);
-        y += 10;
+        // Time progress bar
+        this._drawFancyBar(ctx, hudX, y, hudW, 3, time.progress,
+            time.isNight ? '#3a4a6a' : '#b8922a', '#0d0a06');
+        y += 14;
 
-        // ═══ CURRENT ACTIVITY (most important) ═══
-        // Status with colored dot
-        var statusColor = agent.alive ? '#66dd77' : '#ff4444';
-        ctx.fillStyle = statusColor;
+        this._hudLine(ctx, hudX, y, hudW);
+        y += 16;
+
+        // ── STATUS ──
+        ctx.fillStyle = '#7a6a50';
+        ctx.font = '8px monospace';
+        ctx.fillText('STATUS', hudX, y);
+        y += 14;
+
+        // Status dot + text
+        var alive = agent.alive;
+        ctx.fillStyle = alive ? '#6aaa55' : '#cc4444';
         ctx.beginPath();
-        ctx.arc(hudX + 4, y - 3, 3, 0, Math.PI * 2);
+        ctx.arc(hudX + 4, y - 3, 3.5, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.fillStyle = agent.alive ? '#bbffbb' : '#ff6666';
-        ctx.font = '12px monospace';
-        var statusText = agent.alive ? agent.status : 'DEAD';
-        if (statusText.length > 28) statusText = statusText.substring(0, 27) + '...';
+        ctx.fillStyle = alive ? '#c8e8a8' : '#ff6666';
+        ctx.font = 'bold 12px monospace';
+        var statusText = alive ? agent.status : 'DEAD';
+        if (statusText.length > 26) statusText = statusText.substring(0, 25) + '...';
         ctx.fillText(statusText, hudX + 14, y);
-        y += 6;
+        y += 14;
 
-        // Goal underneath, dimmer
-        ctx.fillStyle = '#997733';
-        ctx.font = '9px monospace';
-        ctx.fillText('Goal: ' + (agent.currentGoal || 'None'), hudX + 14, y + 7);
+        // Goal + Mood
+        ctx.fillStyle = '#a08850';
+        ctx.font = '10px monospace';
+        var goalStr = 'Goal: ' + (agent.currentGoal || 'Idle');
+        ctx.fillText(goalStr, hudX + 14, y);
+
+        // Mood tag (right-aligned)
+        if (agent.mood && SB.Moods && SB.Moods[agent.mood]) {
+            var moodDef = SB.Moods[agent.mood];
+            ctx.fillStyle = moodDef.color;
+            ctx.font = '9px monospace';
+            ctx.fillText(moodDef.label, hudX + hudW - ctx.measureText(moodDef.label).width, y);
+        }
         y += 18;
 
-        if (!agent.alive) {
-            ctx.fillStyle = '#ff7777';
+        if (!alive) {
+            ctx.fillStyle = '#cc6655';
             ctx.font = '11px monospace';
             ctx.fillText('Restarting...', hudX + 14, y);
             return;
         }
 
-        // ═══ VITALS (compact, side by side) ═══
-        this._hudDivider(ctx, hudX, y, hudW);
-        y += 12;
+        this._hudLine(ctx, hudX, y, hudW);
+        y += 16;
 
-        // Hunger bar
-        ctx.fillStyle = '#887766';
-        ctx.font = '9px monospace';
-        ctx.fillText('HNG', hudX, y);
-        this._drawFancyBar(ctx, hudX + 30, y - 7, hudW - 60, 8, agent.hunger / 100,
-            agent.hunger < 25 ? '#ff3333' : agent.hunger < 50 ? '#dd7744' : '#cc5544', '#1a1111');
-        ctx.fillStyle = agent.hunger < 25 ? '#ff5555' : '#998877';
-        ctx.fillText(Math.round(agent.hunger), hudX + hudW - 22, y);
-        y += 15;
-
-        // Energy bar
-        ctx.fillStyle = '#887766';
-        ctx.fillText('ENG', hudX, y);
-        this._drawFancyBar(ctx, hudX + 30, y - 7, hudW - 60, 8, agent.energy / 100,
-            agent.energy < 25 ? '#ff3333' : agent.energy < 50 ? '#88aa44' : '#44aa44', '#111a11');
-        ctx.fillStyle = agent.energy < 25 ? '#ff5555' : '#998877';
-        ctx.fillText(Math.round(agent.energy), hudX + hudW - 22, y);
+        // ── VITALS ──
+        ctx.fillStyle = '#7a6a50';
+        ctx.font = '8px monospace';
+        ctx.fillText('VITALS', hudX, y);
         y += 14;
 
-        // ═══ INVENTORY (compact inline) ═══
-        this._hudDivider(ctx, hudX, y, hudW);
-        y += 12;
-
+        // Hunger
+        ctx.fillStyle = '#8a7a60';
         ctx.font = '10px monospace';
-        ctx.fillStyle = '#aabb88';
-        ctx.fillText('\uD83E\uDEB5' + agent.inventory.wood, hudX, y);
-        ctx.fillStyle = '#aaaaaa';
-        ctx.fillText('\uD83E\uDEA8' + agent.inventory.stone, hudX + 55, y);
-        ctx.fillStyle = '#cc8877';
-        ctx.fillText('\uD83C\uDF4E' + agent.inventory.food, hudX + 110, y);
-        y += 14;
+        ctx.fillText('Hunger', hudX, y);
+        var hColor = agent.hunger < 25 ? '#cc3333' : agent.hunger < 50 ? '#cc7744' : '#bb6644';
+        this._drawFancyBar(ctx, hudX + 55, y - 8, hudW - 85, 10, agent.hunger / 100,
+            hColor, '#1a0d0a');
+        ctx.fillStyle = agent.hunger < 25 ? '#ee5544' : '#9a8a70';
+        ctx.fillText(Math.round(agent.hunger), hudRight - 22, y);
+        y += 18;
 
-        // ═══ BUILDINGS (compact) ═══
+        // Energy
+        ctx.fillStyle = '#8a7a60';
+        ctx.fillText('Energy', hudX, y);
+        var eColor = agent.energy < 25 ? '#cc3333' : agent.energy < 50 ? '#88aa44' : '#55aa44';
+        this._drawFancyBar(ctx, hudX + 55, y - 8, hudW - 85, 10, agent.energy / 100,
+            eColor, '#0a1a0a');
+        ctx.fillStyle = agent.energy < 25 ? '#ee5544' : '#9a8a70';
+        ctx.fillText(Math.round(agent.energy), hudRight - 22, y);
+        y += 20;
+
+        this._hudLine(ctx, hudX, y, hudW);
+        y += 16;
+
+        // ── INVENTORY ──
+        ctx.fillStyle = '#7a6a50';
+        ctx.font = '8px monospace';
+        ctx.fillText('INVENTORY', hudX, y);
+        y += 16;
+
+        ctx.font = '11px monospace';
+        var colW = Math.floor(hudW / 3);
+        // Wood
+        ctx.fillStyle = '#aa9966';
+        ctx.fillText('\uD83E\uDEB5 ' + agent.inventory.wood, hudX, y);
+        // Stone
+        ctx.fillStyle = '#999999';
+        ctx.fillText('\uD83E\uDEA8 ' + agent.inventory.stone, hudX + colW, y);
+        // Food
+        ctx.fillStyle = '#bb7766';
+        ctx.fillText('\uD83C\uDF4E ' + agent.inventory.food, hudX + colW * 2, y);
+        y += 20;
+
+        // ── BUILDINGS ──
         if (world.buildings.length > 0) {
-            this._hudDivider(ctx, hudX, y, hudW);
-            y += 11;
+            this._hudLine(ctx, hudX, y, hudW);
+            y += 16;
 
-            ctx.fillStyle = '#556677';
+            ctx.fillStyle = '#7a6a50';
             ctx.font = '8px monospace';
             ctx.fillText('BUILDINGS', hudX, y);
-            y += 11;
+            y += 14;
 
-            ctx.font = '10px monospace';
+            ctx.font = '11px monospace';
             var buildingIcons = { shelter: '\uD83C\uDFE0', farm: '\uD83C\uDF3E', storage: '\uD83D\uDCE6',
                 well: '\uD83D\uDCA7', workshop: '\uD83D\uDD27', watchtower: '\uD83D\uDDFC' };
             var bx = hudX;
-            var buildingsShown = 0;
             for (var bhi = 0; bhi < world.buildings.length; bhi++) {
                 var bld = world.buildings[bhi];
                 if (bld.type === SB.BuildingTypes.WALL) continue;
                 var bIcon = buildingIcons[bld.type] || '\uD83C\uDFE0';
-                ctx.fillStyle = '#bbccdd';
+                ctx.fillStyle = '#c8b888';
                 ctx.fillText(bIcon, bx, y);
-                bx += 22;
-                buildingsShown++;
-                if (buildingsShown % 8 === 0) { bx = hudX; y += 16; }
+                bx += 24;
+                if (bx > hudRight - 20) { bx = hudX; y += 18; }
             }
             var wallCount = world.getBuildingCount(SB.BuildingTypes.WALL);
             if (wallCount > 0) {
-                ctx.fillStyle = '#999';
+                ctx.fillStyle = '#8a7a60';
                 ctx.font = '9px monospace';
-                ctx.fillText('\uD83E\uDDF1x' + wallCount, bx, y);
+                ctx.fillText('\uD83E\uDDF1\u00d7' + wallCount, bx, y);
             }
-            y += 14;
+            y += 20;
         }
 
-        // ═══ EXPLORATION ═══
-        this._hudDivider(ctx, hudX, y, hudW);
-        y += 11;
+        // ── EXPLORATION ──
+        this._hudLine(ctx, hudX, y, hudW);
+        y += 16;
 
-        ctx.fillStyle = '#556677';
+        ctx.fillStyle = '#7a6a50';
         ctx.font = '8px monospace';
         ctx.fillText('EXPLORED', hudX, y);
 
         var exploredPct = world.getRevealedPercent();
-        ctx.fillStyle = '#88aadd';
-        ctx.font = '10px monospace';
-        ctx.fillText(exploredPct + '%', hudX + 65, y);
-        this._drawFancyBar(ctx, hudX + 95, y - 7, hudW - 95, 8, exploredPct / 100,
-            '#3366aa', '#111122');
-        y += 14;
+        ctx.fillStyle = '#b8a878';
+        ctx.font = '11px monospace';
+        ctx.fillText(exploredPct + '%', hudX + 70, y);
+        this._drawFancyBar(ctx, hudX + 100, y - 8, hudW - 100, 10, exploredPct / 100,
+            '#5a7a4a', '#0a1008');
+        y += 12;
 
-        // ═══ MIND / THOUGHTS (the interesting AI stuff) ═══
+        // Milestones
+        if (agent.milestones && agent.milestones.length > 0) {
+            y += 4;
+            ctx.font = '9px monospace';
+            ctx.fillStyle = '#7a8a5a';
+            for (var mi = 0; mi < Math.min(agent.milestones.length, 3); mi++) {
+                var ms = agent.milestones[mi];
+                ctx.fillText('\u2713 ' + ms.name, hudX + 4, y);
+                y += 12;
+            }
+        }
+        y += 8;
+
+        // ── THOUGHTS ──
         if (agent.thoughts && agent.thoughts.length > 0) {
-            this._hudDivider(ctx, hudX, y, hudW);
-            y += 11;
+            this._hudLine(ctx, hudX, y, hudW);
+            y += 16;
 
-            ctx.fillStyle = '#556677';
+            ctx.fillStyle = '#7a6a50';
             ctx.font = '8px monospace';
             ctx.fillText('THOUGHTS', hudX, y);
-            y += 11;
+            y += 14;
 
             ctx.font = '9px monospace';
             var tCount = Math.min(agent.thoughts.length, 3);
             for (var thi = 0; thi < tCount; thi++) {
-                var thAlpha = 0.7 - (thi * 0.2);
-                ctx.fillStyle = 'rgba(190, 180, 150, ' + thAlpha + ')';
+                var thAlpha = 0.6 - (thi * 0.15);
+                ctx.fillStyle = 'rgba(200, 185, 150, ' + thAlpha + ')';
                 var tText = '\u201C' + agent.thoughts[thi].text + '\u201D';
                 if (tText.length > 34) tText = tText.substring(0, 33) + '\u2026\u201D';
                 ctx.fillText(tText, hudX, y);
-                y += 12;
+                y += 13;
             }
-            y += 2;
+            y += 4;
         }
 
-        // ═══ KNOWLEDGE (compact) ═══
+        // ── KNOWLEDGE ──
         if (agent.knowledge && agent.knowledge.length > 0) {
-            this._hudDivider(ctx, hudX, y, hudW);
-            y += 11;
+            this._hudLine(ctx, hudX, y, hudW);
+            y += 16;
 
-            ctx.fillStyle = '#556677';
+            ctx.fillStyle = '#7a6a50';
             ctx.font = '8px monospace';
             ctx.fillText('KNOWLEDGE', hudX, y);
-            y += 11;
+            y += 14;
 
             ctx.font = '9px monospace';
-            ctx.fillStyle = '#558866';
-            var knowledgeStr = '';
+            ctx.fillStyle = '#6a8a5a';
+            var kx = hudX;
             for (var ki = 0; ki < agent.knowledge.length; ki++) {
                 var disc = SB.Discoveries ? SB.Discoveries[agent.knowledge[ki]] : null;
-                if (disc) knowledgeStr += disc.name + '  ';
+                if (!disc) continue;
+                var kText = disc.name;
+                var kWidth = ctx.measureText(kText).width + 12;
+                if (kx + kWidth > hudRight) { kx = hudX; y += 14; }
+                ctx.fillText(kText, kx, y);
+                kx += kWidth;
             }
-            if (knowledgeStr) {
-                if (knowledgeStr.length > 36) knowledgeStr = knowledgeStr.substring(0, 35) + '...';
-                ctx.fillText(knowledgeStr.trim(), hudX, y);
-                y += 12;
-            }
+            y += 8;
         }
 
-        // ═══ LOG (at bottom, scrolling) ═══
-        // Position log relative to bottom so it doesn't get pushed off
-        var logY = Math.max(y + 10, this.height - 130);
-        this._hudDivider(ctx, hudX, logY, hudW);
-        logY += 11;
+        // ── LOG (anchored to bottom area) ──
+        var logY = Math.max(y + 12, this.height - 140);
+        this._hudLine(ctx, hudX, logY, hudW);
+        logY += 16;
 
-        ctx.fillStyle = '#556677';
+        ctx.fillStyle = '#7a6a50';
         ctx.font = '8px monospace';
         ctx.fillText('LOG', hudX, logY);
-        logY += 11;
+        logY += 14;
 
         ctx.font = '9px monospace';
         var logCount = Math.min(agent.log.length, 6);
         for (var li = 0; li < logCount; li++) {
             var entry = agent.log[li];
-            var logAlpha = 0.7 - (li * 0.1);
-            ctx.fillStyle = 'rgba(130, 135, 155, ' + logAlpha + ')';
+            var logAlpha = 0.55 - (li * 0.08);
+            ctx.fillStyle = 'rgba(170, 155, 130, ' + logAlpha + ')';
             var logText = entry.time + ': ' + entry.message;
             if (logText.length > 36) logText = logText.substring(0, 35) + '...';
             ctx.fillText(logText, hudX, logY);
-            logY += 11;
+            logY += 12;
         }
 
-        // ═══ BOTTOM BAR (speed + controls, super minimal) ═══
-        var bottomY = this.height - 18;
-        ctx.fillStyle = 'rgba(40, 40, 60, 0.6)';
-        ctx.fillRect(hudLeft, this.height - 24, this.hudWidth, 24);
-        ctx.fillStyle = '#445';
-        ctx.font = '9px monospace';
-        var speedNames = ['1x', '2x', '5x', '10x'];
+        // ── BOTTOM BAR ──
+        var barH = 28;
+        ctx.fillStyle = '#120e0a';
+        ctx.fillRect(hudLeft, this.height - barH, this.hudWidth, barH);
+        ctx.fillStyle = '#3a2a18';
+        ctx.fillRect(hudLeft, this.height - barH, this.hudWidth, 1);
+
+        var bottomY = this.height - 10;
+        ctx.font = '10px monospace';
         var speeds = [1, 2, 5, 10];
-        var sx = hudX;
+        var speedLabels = ['1x', '2x', '5x', '10x'];
+        var bsx = hudX;
         for (var si = 0; si < speeds.length; si++) {
-            ctx.fillStyle = SB.Game.speedMultiplier === speeds[si] ? '#88bbff' : '#334';
-            ctx.fillText(speedNames[si], sx, bottomY);
-            sx += 28;
+            var active = SB.Game.speedMultiplier === speeds[si];
+            ctx.fillStyle = active ? '#c8a858' : '#3a3028';
+            ctx.fillText(speedLabels[si], bsx, bottomY);
+            bsx += 30;
         }
-        ctx.fillStyle = '#334';
-        ctx.fillText('F:follow  R:reset', sx + 10, bottomY);
+        ctx.fillStyle = '#4a3a28';
+        ctx.font = '9px monospace';
+        ctx.fillText('[F] follow  [R] reset', bsx + 8, bottomY);
     },
 
-    _hudDivider: function(ctx, x, y, w) {
-        ctx.fillStyle = 'rgba(60, 70, 100, 0.25)';
+    _hudLine: function(ctx, x, y, w) {
+        ctx.fillStyle = 'rgba(100, 80, 50, 0.2)';
         ctx.fillRect(x, y, w, 1);
     },
 

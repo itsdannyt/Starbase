@@ -20,8 +20,14 @@ SB.Agent = {
     stats: {
         timesSleptOnGround: 0,
         timesGatheredBerries: 0,
+        actionCounts: {},
     },
     ticksAlive: 0,
+
+    // Mood
+    mood: '',
+    moodTimer: 0,
+    _nearDeathWarned: false,
 
     // Inner monologue
     thoughts: [],
@@ -84,7 +90,12 @@ SB.Agent = {
         // Knowledge - start with only instinct actions
         this.knowledge = [];
         this.knownActions = ['eat', 'sleepOnGround', 'explore'];
-        this.stats = { timesSleptOnGround: 0, timesGatheredBerries: 0 };
+        this.stats = { timesSleptOnGround: 0, timesGatheredBerries: 0, actionCounts: {} };
+
+        // Mood
+        this.mood = 'confused';
+        this.moodTimer = 15;
+        this._nearDeathWarned = false;
 
         // Thoughts
         this.thoughts = [];
@@ -147,15 +158,9 @@ SB.Agent = {
 
         this.isSleeping = false;
 
-        // Brain: check for new discoveries
+        // Brain: discoveries, mood, thoughts, transitions
         if (SB.Brain) {
-            SB.Brain.checkDiscoveries(this, world);
-            SB.Brain.generateThought(this, world, time);
-        }
-
-        // LLM: occasional enhanced thoughts
-        if (SB.LLM && SB.LLM.available) {
-            SB.LLM.requestThought(this, world, time);
+            SB.Brain.tick(this, world, time);
         }
 
         // Thought bubble timer
@@ -235,11 +240,23 @@ SB.Agent = {
                 if (step.action.name === 'sleepOnGround') this.stats.timesSleptOnGround++;
                 if (step.action.name === 'gatherBerries') this.stats.timesGatheredBerries++;
 
+                // Track experience + trigger reactions
+                if (SB.Brain) {
+                    SB.Brain.trackAction(this, step.action.name);
+                    SB.Brain.reactToEvent(this, 'action_complete', { action: step.action.name });
+
+                    if (step.action.name === 'eat') SB.Brain.reactToEvent(this, 'ate_food', {});
+                    if (step.action.name === 'sleepOnGround') SB.Brain.reactToEvent(this, 'slept', { onGround: true });
+                    if (step.action.name === 'sleep') SB.Brain.reactToEvent(this, 'slept', { onGround: false });
+                    if (step.action.name === 'harvestFarm') SB.Brain.reactToEvent(this, 'harvest', {});
+                }
+
                 if (step.action.name.indexOf('build') === 0) {
                     this.totalBuildingsBuilt++;
                     var buildingName = step.action.name.replace('build', '');
                     buildingName = buildingName.replace(/([A-Z])/g, ' $1').trim().toLowerCase();
                     this.addLog('Built a ' + buildingName);
+                    if (SB.Brain) SB.Brain.reactToEvent(this, 'built', { building: buildingName });
 
                     // Milestone-based fog expansion
                     if (step.action.name === 'buildShelter') {
