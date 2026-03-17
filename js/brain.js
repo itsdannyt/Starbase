@@ -54,11 +54,7 @@ SB.Discoveries = {
             ) !== null;
         },
         unlocks: ['gatherBerries'],
-        thoughts: [
-            'Those red things on that bush... are they edible?',
-            'My stomach is growling. Those berries look promising.',
-            'I think I can eat these!'
-        ]
+        thoughts: ['Those red things on that bush... are they edible?', 'My stomach is growling. Those berries look promising.', 'I think I can eat these!']
     },
     trees_choppable: {
         name: 'Wood from Trees',
@@ -68,11 +64,17 @@ SB.Discoveries = {
             ) !== null;
         },
         unlocks: ['chopTree'],
-        thoughts: [
-            'I could break branches off these trees...',
-            'Wood could be useful for something.',
-            'These trees... I bet I could use that wood.'
-        ]
+        thoughts: ['I could break branches off these trees...', 'Wood could be useful for something.', 'These trees... I bet I could use that wood.']
+    },
+    fiber_gathering: {
+        name: 'Fiber from Grass',
+        check: function(agent, world) {
+            return agent.ticksAlive > 10 && SB.Utils.findNearest(world, agent.x, agent.y,
+                function(tile) { return tile.resource === SB.Resources.TALL_GRASS && tile.resourceAmount > 0; }, 4
+            ) !== null;
+        },
+        unlocks: ['gatherFiber'],
+        thoughts: ['This tall grass is tough... I could weave it into rope.', 'Fiber from these grasses could be useful.', 'I should collect some of this grass.']
     },
     stone_minable: {
         name: 'Stone Mining',
@@ -82,37 +84,61 @@ SB.Discoveries = {
             ) !== null;
         },
         unlocks: ['mineStone'],
-        thoughts: [
-            'These rocks look solid. Could be useful.',
-            'Stone... I could shape this into something.',
-            'Hard rock. I can chip pieces off this.'
-        ]
+        thoughts: ['These rocks look solid. Could be useful.', 'Stone... I could shape this into something.', 'Hard rock. I can chip pieces off this.']
+    },
+    fire_making: {
+        name: 'Fire Making',
+        check: function(agent) {
+            return agent.inventory.wood >= 3 && agent.inventory.stone >= 2 &&
+                   agent.knowledge.indexOf('trees_choppable') >= 0 &&
+                   agent.knowledge.indexOf('stone_minable') >= 0;
+        },
+        unlocks: ['buildCampfire'],
+        thoughts: ['If I strike stone against stone near wood...', 'Fire! I could make fire!', 'A campfire would keep me warm and let me cook.']
+    },
+    crafting_concept: {
+        name: 'Crafting',
+        check: function(agent, world) {
+            return world.hasBuilding(SB.BuildingTypes.CAMPFIRE) &&
+                   agent.inventory.wood >= 5;
+        },
+        unlocks: ['buildWorkbench'],
+        thoughts: ['With a flat surface, I could shape wood into tools.', 'I need a workbench to craft properly.', 'A sturdy table would help me build things.']
+    },
+    tool_making: {
+        name: 'Tool Crafting',
+        check: function(agent, world) {
+            return world.hasBuilding(SB.BuildingTypes.WORKBENCH);
+        },
+        unlocks: ['craftWoodAxe', 'craftWoodPickaxe', 'craftHoe'],
+        thoughts: ['With this workbench, I can make real tools!', 'An axe would make chopping so much faster.', 'Tools will change everything.']
     },
     shelter_concept: {
         name: 'Shelter Building',
-        check: function(agent) {
-            return agent.knowledge.indexOf('trees_choppable') >= 0 &&
-                   agent.knowledge.indexOf('stone_minable') >= 0 &&
+        check: function(agent, world) {
+            return world.hasBuilding(SB.BuildingTypes.WORKBENCH) &&
                    agent.stats.timesSleptOnGround >= 2;
         },
         unlocks: ['buildShelter'],
-        thoughts: [
-            'Sleeping on the ground is terrible. I need something better.',
-            'With wood and stone... I could build a shelter!',
-            'I need a roof over my head.'
-        ]
+        thoughts: ['Sleeping on the ground is terrible. I need something better.', 'With wood and stone... I could build a shelter!', 'I need a roof over my head.']
+    },
+    bed_concept: {
+        name: 'Bed Making',
+        check: function(agent) {
+            return agent.hasShelter &&
+                   agent.knowledge.indexOf('fiber_gathering') >= 0;
+        },
+        unlocks: ['buildBed'],
+        thoughts: ['A proper bed would help me sleep so much better.', 'Fiber and wood... I could make a real bed.', 'No more sleeping on hard floors.']
     },
     farming_concept: {
         name: 'Farming',
         check: function(agent) {
-            return agent.hasShelter && agent.stats.timesGatheredBerries >= 3;
+            return agent.hasShelter && agent.hasHoe &&
+                   agent.stats.timesGatheredBerries >= 3;
         },
         unlocks: ['buildFarm', 'harvestFarm'],
-        thoughts: [
-            'What if I could grow my own food?',
-            'I keep searching for berries... there must be a better way.',
-            'A farm near my shelter... I could plant things!'
-        ]
+        thoughts: ['What if I could grow my own food?', 'I keep searching for berries... there must be a better way.', 'A farm near my shelter... I could plant things!']
     },
     well_concept: {
         name: 'Well Building',
@@ -122,10 +148,26 @@ SB.Discoveries = {
                    agent.ticksAlive > 200;
         },
         unlocks: ['buildWell'],
-        thoughts: [
-            'Fresh water would make life so much easier.',
-            'I should build a well near my shelter.'
-        ]
+        thoughts: ['Fresh water would make life so much easier.', 'I should build a well near my shelter.']
+    },
+    furnace_concept: {
+        name: 'Furnace',
+        check: function(agent, world) {
+            return world.hasBuilding(SB.BuildingTypes.WORKBENCH) &&
+                   agent.inventory.stone >= 5 &&
+                   agent.ticksAlive > 150;
+        },
+        unlocks: ['buildFurnace'],
+        thoughts: ['A proper oven could cook food much better.', 'Hot stone can be shaped... a furnace!', 'I need something hotter than a campfire.']
+    },
+    smokehouse_concept: {
+        name: 'Smokehouse',
+        check: function(agent, world) {
+            return world.hasBuilding(SB.BuildingTypes.FURNACE) &&
+                   agent.ticksAlive > 300;
+        },
+        unlocks: ['buildSmokehouse'],
+        thoughts: ['I could smoke food to make it last longer.', 'A smokehouse would preserve my meals.']
     },
     storage_concept: {
         name: 'Storage',
@@ -134,10 +176,7 @@ SB.Discoveries = {
                    agent.ticksAlive > 350;
         },
         unlocks: ['buildStorage'],
-        thoughts: [
-            'I need somewhere to keep all these materials.',
-            'A storage building would help me stay organized.'
-        ]
+        thoughts: ['I need somewhere to keep all these materials.', 'A storage building would help me stay organized.']
     },
     workshop_concept: {
         name: 'Workshop',
@@ -146,22 +185,15 @@ SB.Discoveries = {
                    agent.ticksAlive > 550;
         },
         unlocks: ['buildWorkshop'],
-        thoughts: [
-            'With better tools, I could work much faster.',
-            'A workshop... I could craft better equipment!'
-        ]
+        thoughts: ['With better tools, I could work much faster.', 'A workshop... I could craft better equipment!']
     },
-    watchtower_concept: {
-        name: 'Watchtower',
+    stone_tools_concept: {
+        name: 'Stone Tools',
         check: function(agent, world) {
-            return world.hasBuilding(SB.BuildingTypes.WORKSHOP) &&
-                   agent.ticksAlive > 750;
+            return world.hasBuilding(SB.BuildingTypes.WORKSHOP);
         },
-        unlocks: ['buildWatchtower'],
-        thoughts: [
-            'I want to see further. A tall tower would help.',
-            'From up high, I could survey the whole island!'
-        ]
+        unlocks: ['craftStoneAxe', 'craftStonePickaxe'],
+        thoughts: ['Stone tools would be so much stronger.', 'With the workshop, I can shape stone into tool heads!']
     },
     walls_concept: {
         name: 'Defensive Walls',
@@ -171,10 +203,7 @@ SB.Discoveries = {
                    agent.ticksAlive > 300;
         },
         unlocks: ['buildWall'],
-        thoughts: [
-            'Walls around my shelter would make me feel safer.',
-            'I should fortify my home with stone walls.'
-        ]
+        thoughts: ['Walls around my shelter would make me feel safer.', 'I should fortify my home with stone walls.']
     }
 };
 
@@ -220,6 +249,10 @@ SB.Brain = {
                 agent.addLog('Discovered: ' + disc.name);
                 agent.mood = 'excited';
                 agent.moodTimer = 60;
+
+                // Feed discovery to memory and trigger LLM re-evaluation
+                if (SB.Memory) SB.Memory.addEvent('Discovered ' + disc.name + ' — can now ' + disc.unlocks.join(', '));
+                if (SB.LLMPlanner) SB.LLMPlanner.triggerImmediate();
             }
         }
     },
@@ -281,6 +314,9 @@ SB.Brain = {
                 var name = data.action;
                 var count = agent.stats.actionCounts[name] || 0;
 
+                // Feed to memory
+                if (SB.Memory) SB.Memory.addEvent('Completed ' + name);
+
                 // First-time reactions
                 if (count === 1) {
                     if (name === 'chopTree') agent.addThought(pick(['Got my first wood!', 'That was harder than I thought.', 'Timber!']));
@@ -299,6 +335,7 @@ SB.Brain = {
                 break;
 
             case 'ate_food':
+                if (SB.Memory) SB.Memory.addEvent('Ate food (hunger: ' + Math.round(agent.hunger) + ')');
                 if (agent.hunger < 40) {
                     agent.addThought(pick(["I was starving. That saved me.", "Just in time.", "Can't let myself get that hungry again."]));
                 } else {
@@ -317,6 +354,7 @@ SB.Brain = {
             case 'built':
                 agent.mood = 'proud';
                 agent.moodTimer = 80;
+                if (SB.Memory) SB.Memory.addEvent('Built ' + (data.building || 'something'));
                 break;
 
             case 'near_death':
@@ -328,6 +366,8 @@ SB.Brain = {
                     agent.addThought(pick(["I can barely keep my eyes open.", "If I collapse out here...", "Must... keep... going..."]));
                 }
                 agent.addLog('Dangerously low on ' + (agent.hunger < 10 ? 'food' : 'energy'));
+                if (SB.Memory) SB.Memory.addEvent('DANGER: near death — ' + (agent.hunger < 10 ? 'starving' : 'exhausted'));
+                if (SB.LLMPlanner) SB.LLMPlanner.triggerImmediate();
                 break;
 
             case 'harvest':
@@ -352,6 +392,8 @@ SB.Brain = {
             if (agent.hasShelter) nightThoughts.push('Time to head back to shelter.');
             else nightThoughts.push("I'll have to sleep under the stars again.");
             agent.addThought(nightThoughts[Math.floor(Math.random() * nightThoughts.length)]);
+            if (SB.Memory) SB.Memory.addEvent('Night has fallen');
+            if (SB.LLMPlanner) SB.LLMPlanner.triggerImmediate();
         } else if (!isNight && this._wasNight) {
             // Just became dawn
             var dawnThoughts = [
@@ -361,6 +403,8 @@ SB.Brain = {
                 'The light feels good.',
             ];
             agent.addThought(dawnThoughts[Math.floor(Math.random() * dawnThoughts.length)]);
+            if (SB.Memory) SB.Memory.addEvent('Dawn of a new day');
+            if (SB.LLMPlanner) SB.LLMPlanner.triggerImmediate();
         }
         this._wasNight = isNight;
     },
@@ -431,6 +475,16 @@ SB.Brain = {
         if (status.indexOf('Explor') >= 0 || status.indexOf('Wander') >= 0) {
             pool.push("What's over there?", 'New ground.', 'Never seen this part before.');
             if (hasTrait('explorer')) pool.push("There's always more to find.", 'The unknown calls to me.');
+        }
+        if (status.indexOf('fiber') >= 0 || status.indexOf('Fiber') >= 0) {
+            pool.push('This grass is surprisingly strong.', 'Good fiber here.', 'I can make so many things with this.');
+        }
+        if (status.indexOf('Craft') >= 0) {
+            pool.push('Measure twice, cut once.', 'Taking shape nicely.', 'This will be useful.');
+            if (hasTrait('builder')) pool.push('Crafting is an art.');
+        }
+        if (status.indexOf('campfire') >= 0 || status.indexOf('Campfire') >= 0) {
+            pool.push('Fire changes everything.', 'The warmth feels good.', 'Now I can cook.');
         }
 
         // === TIME OF DAY ===
@@ -509,6 +563,11 @@ SB.Brain = {
         this.updateMood(agent, world, time);
         this.checkTimeTransitions(agent, time);
         this.generateThought(agent, world, time);
+
+        // LLM planner tick
+        if (SB.LLMPlanner) {
+            SB.LLMPlanner.tick(agent, world, time);
+        }
 
         // Near-death warning (once per danger period)
         if ((agent.hunger < 10 || agent.energy < 10) && !agent._nearDeathWarned) {

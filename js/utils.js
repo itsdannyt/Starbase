@@ -27,6 +27,7 @@ SB.Utils = {
         return tile.type !== SB.Tiles.WATER &&
                tile.type !== SB.Tiles.VOID &&
                tile.type !== SB.Tiles.CLIFF;
+        // SAND and HILL are walkable (not in the exclusion list)
     },
 
     // BFS pathfinding - returns array of {x, y} steps (excluding start)
@@ -80,8 +81,8 @@ SB.Utils = {
         for (var y = 0; y < SB.WORLD_HEIGHT; y++) {
             for (var x = 0; x < SB.WORLD_WIDTH; x++) {
                 var tile = world.tiles[y][x];
-                // Skip void and cliff tiles
-                if (tile.type === SB.Tiles.VOID || tile.type === SB.Tiles.CLIFF) continue;
+                // Skip non-land tiles
+                if (tile.type === SB.Tiles.VOID || tile.type === SB.Tiles.CLIFF || tile.type === SB.Tiles.WATER) continue;
                 if (condition(tile, x, y)) {
                     var d = SB.Utils.distance(fromX, fromY, x, y);
                     if (d < bestDist && d <= maxDist) {
@@ -112,7 +113,8 @@ SB.Utils = {
                     for (var cy = by; cy < by + height && valid; cy++) {
                         for (var cx = bx; cx < bx + width && valid; cx++) {
                             var tile = world.tiles[cy][cx];
-                            if (tile.type !== SB.Tiles.GRASS || tile.resource || tile.building) {
+                            var buildable = tile.type === SB.Tiles.GRASS || tile.type === SB.Tiles.HILL || tile.type === SB.Tiles.SAND;
+                            if (!buildable || tile.resource || tile.building) {
                                 valid = false;
                             }
                         }
@@ -143,7 +145,8 @@ SB.Utils = {
                     for (var cy = by; cy < by + height && valid; cy++) {
                         for (var cx = bx; cx < bx + width && valid; cx++) {
                             var tile = world.tiles[cy][cx];
-                            if (tile.type !== SB.Tiles.GRASS || tile.resource || tile.building) {
+                            var buildable = tile.type === SB.Tiles.GRASS || tile.type === SB.Tiles.HILL || tile.type === SB.Tiles.SAND;
+                            if (!buildable || tile.resource || tile.building) {
                                 valid = false;
                             }
                         }

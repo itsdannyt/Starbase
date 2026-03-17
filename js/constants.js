@@ -1,6 +1,8 @@
 var SB = window.Starbase = window.Starbase || {};
 
-SB.TILE_SIZE = 24;
+SB.TILE_SIZE = 24; // legacy, used by non-rendering systems
+SB.ISO_TW = 48;    // isometric tile width (diamond)
+SB.ISO_TH = 24;    // isometric tile height (diamond)
 SB.WORLD_WIDTH = 100;
 SB.WORLD_HEIGHT = 100;
 SB.TICK_RATE = 200; // ms per game tick
@@ -10,28 +12,36 @@ SB.DAY_LENGTH = 120000; // ms
 
 SB.Tiles = {
     GRASS: 'grass',
+    TALL_GRASS: 'tall_grass',
     WATER: 'water',
     DIRT: 'dirt',
     STONE_DEPOSIT: 'stone_deposit',
     FARMLAND: 'farmland',
     VOID: 'void',
     CLIFF: 'cliff',
+    SAND: 'sand',
+    HILL: 'hill',
 };
 
 SB.Resources = {
     TREE: 'tree',
     BERRY_BUSH: 'berry_bush',
     STONE: 'stone',
+    TALL_GRASS: 'tall_grass',
     NONE: null,
 };
 
 SB.BuildingTypes = {
+    CAMPFIRE: 'campfire',
+    WORKBENCH: 'workbench',
     SHELTER: 'shelter',
+    BED: 'bed',
     FARM: 'farm',
-    STORAGE: 'storage',
     WELL: 'well',
+    FURNACE: 'furnace',
+    SMOKEHOUSE: 'smokehouse',
+    STORAGE: 'storage',
     WORKSHOP: 'workshop',
-    WATCHTOWER: 'watchtower',
     WALL: 'wall',
 };
 
@@ -54,6 +64,14 @@ SB.Colors = {
     stone_deposit_dark: '#6a6868',
     farmland: '#6b5535',
     farmland_dark: '#5a4528',
+    sand1: '#d4b878',
+    sand2: '#c8aa6a',
+    sand3: '#ccae70',
+    sand_dark: '#b89858',
+    hill1: '#6aad50',
+    hill2: '#5ea048',
+    hill3: '#62a44c',
+    hill4: '#589942',
 
     // Island / Cliff / Void
     cliff_top: '#7a6a55',
@@ -105,7 +123,28 @@ SB.Colors = {
     farm_crop_young: '#7ab842',
     farm_crop_grain: '#ddb030',
 
+    // Tall grass
+    tall_grass1: '#6aaa50',
+    tall_grass2: '#5e9d48',
+    tall_grass3: '#62a04a',
+    tall_grass_blade: '#7abf58',
+
     // New building colors
+    campfire_log: '#6b4430',
+    campfire_ember: '#ff6622',
+    campfire_flame: '#ffaa33',
+    campfire_glow: '#ff8800',
+    workbench_top: '#c49a50',
+    workbench_leg: '#7a5a30',
+    workbench_top_dark: '#a07838',
+    bed_frame: '#8a6a38',
+    bed_sheet: '#ccbbaa',
+    bed_pillow: '#ddccbb',
+    furnace_stone: '#888899',
+    furnace_opening: '#ff5522',
+    furnace_dark: '#555566',
+    smokehouse_wall: '#8a7058',
+    smokehouse_chimney: '#666677',
     storage_wood: '#9a7040',
     storage_wood_dark: '#6a4a28',
     storage_roof: '#8a5530',
@@ -115,8 +154,6 @@ SB.Colors = {
     workshop_wall: '#8a7050',
     workshop_wall_dark: '#5a4830',
     workshop_roof: '#7a4a28',
-    watchtower_wood: '#7a5a30',
-    watchtower_wood_dark: '#5a3a18',
     wall_stone: '#777788',
     wall_stone_dark: '#555566',
     wall_stone_light: '#9999aa',

@@ -58,11 +58,16 @@ SB.Game = {
         SB.Time.reset();
         SB.Renderer.init('gameCanvas');
 
-        // Center camera on agent
-        SB.Renderer.camera.x = SB.Agent.x * SB.TILE_SIZE + SB.TILE_SIZE / 2;
-        SB.Renderer.camera.y = SB.Agent.y * SB.TILE_SIZE + SB.TILE_SIZE / 2;
-        SB.Renderer.camera.targetX = SB.Renderer.camera.x;
-        SB.Renderer.camera.targetY = SB.Renderer.camera.y;
+        // Initialize memory system and check for LLM
+        if (SB.Memory) SB.Memory.load();
+        if (SB.LLM) SB.LLM.checkAvailability();
+
+        // Center camera on agent (iso coordinates)
+        var isoPos = SB.Renderer.tileToScreen(SB.Agent.x, SB.Agent.y);
+        SB.Renderer.camera.x = isoPos.x;
+        SB.Renderer.camera.y = isoPos.y;
+        SB.Renderer.camera.targetX = isoPos.x;
+        SB.Renderer.camera.targetY = isoPos.y;
 
         this._setupControls();
 
@@ -86,13 +91,23 @@ SB.Game = {
     },
 
     _restart: function() {
+        // Save death lessons before reset
+        if (SB.Memory) SB.Memory.onDeath(SB.Agent);
+
         SB.World.generate();
         SB.Agent.init(SB.World, this.agentConfig);
         SB.Time.reset();
         SB.Renderer.regenerateGrassNoise();
+
+        // Start new life with clean short-term memory
+        if (SB.Memory) {
+            SB.Memory.load(); // reload with correct agent name
+            SB.Memory.onNewLife();
+        }
         SB.Renderer.camera.followAgent = true;
-        SB.Renderer.camera.x = SB.Agent.x * SB.TILE_SIZE + SB.TILE_SIZE / 2;
-        SB.Renderer.camera.y = SB.Agent.y * SB.TILE_SIZE + SB.TILE_SIZE / 2;
+        var restartPos = SB.Renderer.tileToScreen(SB.Agent.x, SB.Agent.y);
+        SB.Renderer.camera.x = restartPos.x;
+        SB.Renderer.camera.y = restartPos.y;
         SB.Renderer.camera.zoom = 1.0;
         this.deathTimer = 0;
         this.tickAccumulator = 0;

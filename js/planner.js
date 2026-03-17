@@ -26,13 +26,55 @@ SB.Planner = {
             actions: ['sleep', 'sleepOnGround'],
         },
         {
+            name: 'Build Campfire',
+            category: 'build',
+            priority: function(agent, world) {
+                if (world.hasBuilding(SB.BuildingTypes.CAMPFIRE)) return 0;
+                if (agent.inventory.wood >= 3 && agent.inventory.stone >= 2) return 48;
+                return 0;
+            },
+            actions: ['buildCampfire', 'chopTree', 'mineStone'],
+        },
+        {
+            name: 'Build Workbench',
+            category: 'build',
+            priority: function(agent, world) {
+                if (!world.hasBuilding(SB.BuildingTypes.CAMPFIRE)) return 0;
+                if (world.hasBuilding(SB.BuildingTypes.WORKBENCH)) return 0;
+                return 44;
+            },
+            actions: ['buildWorkbench', 'chopTree'],
+        },
+        {
+            name: 'Craft Tools',
+            category: 'craft',
+            priority: function(agent, world) {
+                if (!world.hasBuilding(SB.BuildingTypes.WORKBENCH)) return 0;
+                if (agent.axeTier < 1 || agent.pickaxeTier < 1) return 42;
+                if (!agent.hasHoe && agent.knowledge.indexOf('farming_concept') >= 0) return 35;
+                return 0;
+            },
+            actions: ['craftWoodAxe', 'craftWoodPickaxe', 'craftHoe', 'chopTree', 'mineStone'],
+        },
+        {
             name: 'Build Shelter',
             category: 'build',
             priority: function(agent, world) {
                 if (world.hasBuilding(SB.BuildingTypes.SHELTER)) return 0;
+                if (!world.hasBuilding(SB.BuildingTypes.WORKBENCH)) return 0;
                 return 45;
             },
             actions: ['buildShelter', 'chopTree', 'mineStone'],
+        },
+        {
+            name: 'Build Bed',
+            category: 'build',
+            priority: function(agent, world) {
+                if (!agent.hasShelter) return 0;
+                if (world.hasBuilding(SB.BuildingTypes.BED)) return 0;
+                return 32;
+            },
+            actions: ['buildBed', 'chopTree', 'gatherFiber'],
         },
         {
             name: 'Stock Food',
@@ -49,11 +91,12 @@ SB.Planner = {
             category: 'gather',
             priority: function(agent, world) {
                 var woodNeeded = 0;
-                if (!world.hasBuilding(SB.BuildingTypes.SHELTER)) woodNeeded = 10;
+                if (!world.hasBuilding(SB.BuildingTypes.CAMPFIRE)) woodNeeded = 3;
+                else if (!world.hasBuilding(SB.BuildingTypes.WORKBENCH)) woodNeeded = 5;
+                else if (!world.hasBuilding(SB.BuildingTypes.SHELTER)) woodNeeded = 10;
                 else if (!world.hasBuilding(SB.BuildingTypes.FARM)) woodNeeded = 5;
-                else if (!world.hasBuilding(SB.BuildingTypes.STORAGE)) woodNeeded = 8;
+                else if (!world.hasBuilding(SB.BuildingTypes.STORAGE)) woodNeeded = 10;
                 else if (!world.hasBuilding(SB.BuildingTypes.WORKSHOP)) woodNeeded = 12;
-                else if (!world.hasBuilding(SB.BuildingTypes.WATCHTOWER)) woodNeeded = 15;
                 else woodNeeded = 5;
 
                 if (agent.inventory.wood >= woodNeeded) return 0;
@@ -66,12 +109,13 @@ SB.Planner = {
             category: 'gather',
             priority: function(agent, world) {
                 var stoneNeeded = 0;
-                if (!world.hasBuilding(SB.BuildingTypes.SHELTER)) stoneNeeded = 5;
-                else if (!world.hasBuilding(SB.BuildingTypes.WELL)) stoneNeeded = 5;
-                else if (!world.hasBuilding(SB.BuildingTypes.STORAGE)) stoneNeeded = 3;
+                if (!world.hasBuilding(SB.BuildingTypes.CAMPFIRE)) stoneNeeded = 2;
+                else if (!world.hasBuilding(SB.BuildingTypes.SHELTER)) stoneNeeded = 5;
+                else if (!world.hasBuilding(SB.BuildingTypes.WELL)) stoneNeeded = 8;
+                else if (!world.hasBuilding(SB.BuildingTypes.FURNACE)) stoneNeeded = 8;
+                else if (!world.hasBuilding(SB.BuildingTypes.STORAGE)) stoneNeeded = 4;
                 else if (!world.hasBuilding(SB.BuildingTypes.WORKSHOP)) stoneNeeded = 8;
-                else if (!world.hasBuilding(SB.BuildingTypes.WATCHTOWER)) stoneNeeded = 10;
-                else if (world.getBuildingCount(SB.BuildingTypes.WALL) < 12) stoneNeeded = 2;
+                else if (world.getBuildingCount(SB.BuildingTypes.WALL) < 12) stoneNeeded = 3;
                 else stoneNeeded = 0;
 
                 if (stoneNeeded === 0 || agent.inventory.stone >= stoneNeeded) return 0;
@@ -80,14 +124,28 @@ SB.Planner = {
             actions: ['mineStone'],
         },
         {
+            name: 'Gather Fiber',
+            category: 'gather',
+            priority: function(agent) {
+                if (agent.knowledge.indexOf('bed_concept') < 0 && agent.knowledge.indexOf('farming_concept') < 0) return 0;
+                var fiberNeeded = 0;
+                if (agent.knowledge.indexOf('bed_concept') >= 0) fiberNeeded = 3;
+                if (agent.knowledge.indexOf('farming_concept') >= 0) fiberNeeded = Math.max(fiberNeeded, 2);
+                if (agent.inventory.fiber >= fiberNeeded) return 0;
+                return 20;
+            },
+            actions: ['gatherFiber'],
+        },
+        {
             name: 'Build Farm',
             category: 'build',
             priority: function(agent, world) {
                 if (!agent.hasShelter) return 0;
+                if (!agent.hasHoe) return 0;
                 if (world.hasBuilding(SB.BuildingTypes.FARM)) return 0;
                 return 35;
             },
-            actions: ['buildFarm', 'chopTree'],
+            actions: ['buildFarm', 'chopTree', 'gatherFiber'],
         },
         {
             name: 'Tend Farm',
@@ -103,12 +161,34 @@ SB.Planner = {
             name: 'Build Well',
             category: 'build',
             priority: function(agent, world) {
-                if (!world.hasBuilding(SB.BuildingTypes.SHELTER)) return 0;
+                if (!agent.hasShelter) return 0;
                 if (world.hasBuilding(SB.BuildingTypes.WELL)) return 0;
-                if (agent.inventory.stone >= 5) return 32;
+                if (agent.inventory.stone >= 8) return 32;
                 return 0;
             },
             actions: ['buildWell', 'mineStone'],
+        },
+        {
+            name: 'Build Furnace',
+            category: 'build',
+            priority: function(agent, world) {
+                if (!world.hasBuilding(SB.BuildingTypes.WORKBENCH)) return 0;
+                if (world.hasBuilding(SB.BuildingTypes.FURNACE)) return 0;
+                if (agent.inventory.stone >= 8) return 28;
+                return 18;
+            },
+            actions: ['buildFurnace', 'mineStone'],
+        },
+        {
+            name: 'Build Smokehouse',
+            category: 'build',
+            priority: function(agent, world) {
+                if (!world.hasBuilding(SB.BuildingTypes.FURNACE)) return 0;
+                if (world.hasBuilding(SB.BuildingTypes.SMOKEHOUSE)) return 0;
+                if (agent.inventory.stone >= 6 && agent.inventory.wood >= 4) return 24;
+                return 14;
+            },
+            actions: ['buildSmokehouse', 'mineStone', 'chopTree'],
         },
         {
             name: 'Build Storage',
@@ -116,7 +196,7 @@ SB.Planner = {
             priority: function(agent, world) {
                 if (!world.hasBuilding(SB.BuildingTypes.FARM)) return 0;
                 if (world.hasBuilding(SB.BuildingTypes.STORAGE)) return 0;
-                if (agent.inventory.wood >= 8 && agent.inventory.stone >= 3) return 30;
+                if (agent.inventory.wood >= 10 && agent.inventory.stone >= 4) return 30;
                 return 18;
             },
             actions: ['buildStorage', 'chopTree', 'mineStone'],
@@ -133,23 +213,22 @@ SB.Planner = {
             actions: ['buildWorkshop', 'chopTree', 'mineStone'],
         },
         {
-            name: 'Build Watchtower',
-            category: 'build',
+            name: 'Craft Stone Tools',
+            category: 'craft',
             priority: function(agent, world) {
                 if (!world.hasBuilding(SB.BuildingTypes.WORKSHOP)) return 0;
-                if (world.hasBuilding(SB.BuildingTypes.WATCHTOWER)) return 0;
-                if (agent.inventory.wood >= 15 && agent.inventory.stone >= 10) return 26;
-                return 14;
+                if (agent.axeTier >= 2 && agent.pickaxeTier >= 2) return 0;
+                return 26;
             },
-            actions: ['buildWatchtower', 'chopTree', 'mineStone'],
+            actions: ['craftStoneAxe', 'craftStonePickaxe', 'mineStone', 'chopTree'],
         },
         {
             name: 'Build Walls',
             category: 'build',
             priority: function(agent, world) {
-                if (!world.hasBuilding(SB.BuildingTypes.SHELTER)) return 0;
+                if (!agent.hasShelter) return 0;
                 if (world.getBuildingCount(SB.BuildingTypes.WALL) >= 12) return 0;
-                if (agent.inventory.stone >= 2) return 10;
+                if (agent.inventory.stone >= 3) return 10;
                 return 0;
             },
             actions: ['buildWall', 'mineStone'],
@@ -174,7 +253,41 @@ SB.Planner = {
         },
     ],
 
+    // Execute an LLM-chosen action by finding the action def and building a plan
+    _executeLLMAction: function(agent, world, actionName) {
+        var actionDefs = SB.Actions.all();
+        var action = null;
+        for (var i = 0; i < actionDefs.length; i++) {
+            if (actionDefs[i].name === actionName) {
+                action = actionDefs[i];
+                break;
+            }
+        }
+        if (!action) return null;
+
+        // Check preconditions
+        if (!action.preconditions(agent, world)) return null;
+
+        var plan = [];
+        var target = action.getTarget(agent, world);
+        if (target) {
+            plan.push({ type: 'walkTo', target: target, description: 'Walking to ' + actionName + ' site' });
+        }
+        plan.push({ type: 'execute', action: action, description: action.description });
+        return { goal: 'LLM: ' + actionName, actions: plan };
+    },
+
     makePlan: function(agent, world, time) {
+        // LLM override: if the LLM brain has decided on an action, try it first
+        if (SB.LLMPlanner && SB.LLMPlanner.shouldOverride()) {
+            var llmDecision = SB.LLMPlanner.getAction();
+            if (llmDecision && llmDecision.action) {
+                var llmPlan = this._executeLLMAction(agent, world, llmDecision.action);
+                if (llmPlan) return llmPlan;
+                // If LLM action fails preconditions, fall through to rule-based
+            }
+        }
+
         var bestGoal = null;
         var bestPriority = -1;
         var bestActions = null;
@@ -234,25 +347,37 @@ SB.Planner = {
             if (actionName.indexOf('build') === 0 && !action.preconditions(agent, world)) {
                 var needsWood = false;
                 var needsStone = false;
+                var needsFiber = false;
 
-                if (actionName === 'buildShelter') {
+                if (actionName === 'buildCampfire') {
+                    needsWood = agent.inventory.wood < 3;
+                    needsStone = agent.inventory.stone < 2;
+                } else if (actionName === 'buildWorkbench') {
+                    needsWood = agent.inventory.wood < 5;
+                } else if (actionName === 'buildShelter') {
                     needsWood = agent.inventory.wood < 10;
                     needsStone = agent.inventory.stone < 5;
+                } else if (actionName === 'buildBed') {
+                    needsWood = agent.inventory.wood < 4;
+                    needsFiber = agent.inventory.fiber < 3;
                 } else if (actionName === 'buildFarm') {
                     needsWood = agent.inventory.wood < 5;
+                    needsFiber = agent.inventory.fiber < 2;
                 } else if (actionName === 'buildStorage') {
-                    needsWood = agent.inventory.wood < 8;
-                    needsStone = agent.inventory.stone < 3;
+                    needsWood = agent.inventory.wood < 10;
+                    needsStone = agent.inventory.stone < 4;
                 } else if (actionName === 'buildWell') {
-                    needsStone = agent.inventory.stone < 5;
+                    needsStone = agent.inventory.stone < 8;
+                } else if (actionName === 'buildFurnace') {
+                    needsStone = agent.inventory.stone < 8;
+                } else if (actionName === 'buildSmokehouse') {
+                    needsStone = agent.inventory.stone < 6;
+                    needsWood = agent.inventory.wood < 4;
                 } else if (actionName === 'buildWorkshop') {
                     needsWood = agent.inventory.wood < 12;
                     needsStone = agent.inventory.stone < 8;
-                } else if (actionName === 'buildWatchtower') {
-                    needsWood = agent.inventory.wood < 15;
-                    needsStone = agent.inventory.stone < 10;
                 } else if (actionName === 'buildWall') {
-                    needsStone = agent.inventory.stone < 2;
+                    needsStone = agent.inventory.stone < 3;
                 }
 
                 // Only gather resources the agent knows how to gather
@@ -277,6 +402,18 @@ SB.Planner = {
                         var mineTarget = mineAction.getTarget(agent, world);
                         if (mineTarget) plan.push({ type: 'walkTo', target: mineTarget, description: 'Walking to stone' });
                         plan.push({ type: 'execute', action: mineAction, description: mineAction.description });
+                        break;
+                    }
+                }
+                if (needsFiber && agent.knownActions.indexOf('gatherFiber') >= 0) {
+                    var fiberAction = null;
+                    for (var fi = 0; fi < actionDefs.length; fi++) {
+                        if (actionDefs[fi].name === 'gatherFiber') { fiberAction = actionDefs[fi]; break; }
+                    }
+                    if (fiberAction && fiberAction.preconditions(agent, world)) {
+                        var fiberTarget = fiberAction.getTarget(agent, world);
+                        if (fiberTarget) plan.push({ type: 'walkTo', target: fiberTarget, description: 'Walking to fiber' });
+                        plan.push({ type: 'execute', action: fiberAction, description: fiberAction.description });
                         break;
                     }
                 }

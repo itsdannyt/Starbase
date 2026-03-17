@@ -37,8 +37,14 @@ SB.Agent = {
     inventory: {
         wood: 0,
         stone: 0,
+        fiber: 0,
         food: 2,
     },
+
+    // Tool tiers: 0=none, 1=wood, 2=stone
+    axeTier: 0,
+    pickaxeTier: 0,
+    hasHoe: false,
 
     // Current plan
     currentGoal: '',
@@ -72,7 +78,10 @@ SB.Agent = {
         this.energy = 100;
         this.alive = true;
         this.hasShelter = false;
-        this.inventory = { wood: 0, stone: 0, food: 2 };
+        this.inventory = { wood: 0, stone: 0, fiber: 0, food: 2 };
+        this.axeTier = 0;
+        this.pickaxeTier = 0;
+        this.hasHoe = false;
         this.plan = [];
         this.currentStep = null;
         this.actionProgress = 0;
@@ -239,6 +248,7 @@ SB.Agent = {
                 // Track stats for discovery triggers
                 if (step.action.name === 'sleepOnGround') this.stats.timesSleptOnGround++;
                 if (step.action.name === 'gatherBerries') this.stats.timesGatheredBerries++;
+                if (step.action.name === 'gatherFiber') { if (!this.stats.timesGatheredFiber) this.stats.timesGatheredFiber = 0; this.stats.timesGatheredFiber++; }
 
                 // Track experience + trigger reactions
                 if (SB.Brain) {
@@ -258,8 +268,16 @@ SB.Agent = {
                     this.addLog('Built a ' + buildingName);
                     if (SB.Brain) SB.Brain.reactToEvent(this, 'built', { building: buildingName });
 
-                    // Milestone-based fog expansion
-                    if (step.action.name === 'buildShelter') {
+                    // Milestone-based events
+                    if (step.action.name === 'buildCampfire') {
+                        this.milestones.push({ name: 'First Fire', time: SB.Time ? SB.Time.dayCount + 1 : 1 });
+                        SB.World.milestoneReveal(this.x, this.y, 6);
+                        this.addThought('Fire! This changes everything.');
+                    } else if (step.action.name === 'buildWorkbench') {
+                        this.milestones.push({ name: 'Workbench Ready', time: SB.Time ? SB.Time.dayCount + 1 : 1 });
+                        SB.World.milestoneReveal(this.x, this.y, 8);
+                        this.addThought('Now I can craft real tools.');
+                    } else if (step.action.name === 'buildShelter') {
                         this.milestones.push({ name: 'Shelter Built', time: SB.Time ? SB.Time.dayCount + 1 : 1 });
                         SB.World.milestoneReveal(this.x, this.y, 14);
                         this.addLog('The fog recedes! New territory revealed.');
@@ -277,17 +295,27 @@ SB.Agent = {
                         this.milestones.push({ name: 'Well Constructed', time: SB.Time ? SB.Time.dayCount + 1 : 1 });
                         SB.World.milestoneReveal(this.x, this.y, 8);
                         this.addLog('Fresh water! Fog pulls back.');
+                    } else if (step.action.name === 'buildBed') {
+                        this.milestones.push({ name: 'Bed Crafted', time: SB.Time ? SB.Time.dayCount + 1 : 1 });
+                        this.addThought('A real bed. No more sore back.');
+                    } else if (step.action.name === 'buildFurnace') {
+                        this.milestones.push({ name: 'Furnace Built', time: SB.Time ? SB.Time.dayCount + 1 : 1 });
+                        SB.World.milestoneReveal(this.x, this.y, 8);
+                        this.addThought('Now I can really cook.');
+                    } else if (step.action.name === 'buildSmokehouse') {
+                        this.milestones.push({ name: 'Smokehouse Built', time: SB.Time ? SB.Time.dayCount + 1 : 1 });
+                        this.addThought('Smoked food will last much longer.');
                     } else if (step.action.name === 'buildWorkshop') {
                         this.milestones.push({ name: 'Workshop Ready', time: SB.Time ? SB.Time.dayCount + 1 : 1 });
                         SB.World.milestoneReveal(this.x, this.y, 12);
                         this.addLog('Tools upgraded! Gathering is faster now.');
                         this.addThought('Better tools. Now I can really get to work.');
-                    } else if (step.action.name === 'buildWatchtower') {
-                        this.milestones.push({ name: 'Watchtower Built', time: SB.Time ? SB.Time.dayCount + 1 : 1 });
-                        SB.World.milestoneReveal(this.x, this.y, 25);
-                        this.addLog('The watchtower reveals the entire island!');
-                        this.addThought('I can see everything from up here!');
                     }
+                } else if (step.action.name.indexOf('craft') === 0) {
+                    var toolName = step.action.name.replace('craft', '');
+                    toolName = toolName.replace(/([A-Z])/g, ' $1').trim().toLowerCase();
+                    this.addLog('Crafted ' + toolName);
+                    if (SB.Brain) SB.Brain.reactToEvent(this, 'action_complete', { action: step.action.name });
                 } else if (step.action.name === 'harvestFarm') {
                     this.addLog('Harvested crops from the farm');
                 }

@@ -8,7 +8,7 @@ SB.Renderer = {
     animFrame: 0,
     grassNoise: null,
 
-    // Camera system
+    // Camera system (positions in iso screen space)
     camera: {
         x: 0,
         y: 0,
@@ -30,10 +30,104 @@ SB.Renderer = {
     hudWidth: 300,
 
     fogPatternCanvas: null,
-
-    // Starfield layers
     farStars: [],
     nearStars: [],
+
+    // ═══════════════════════════════════════════
+    // ISO HELPERS
+    // ═══════════════════════════════════════════
+
+    tileToScreen: function(tx, ty) {
+        var hw = SB.ISO_TW / 2;
+        var hh = SB.ISO_TH / 2;
+        return {
+            x: (tx - ty) * hw,
+            y: (tx + ty) * hh
+        };
+    },
+
+    screenToTile: function(sx, sy) {
+        var hw = SB.ISO_TW / 2;
+        var hh = SB.ISO_TH / 2;
+        return {
+            x: (sx / hw + sy / hh) / 2,
+            y: (sy / hh - sx / hw) / 2
+        };
+    },
+
+    _fillDiamond: function(ctx, sx, sy, color) {
+        var hw = SB.ISO_TW / 2;
+        var hh = SB.ISO_TH / 2;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - hh);
+        ctx.lineTo(sx + hw, sy);
+        ctx.lineTo(sx, sy + hh);
+        ctx.lineTo(sx - hw, sy);
+        ctx.closePath();
+        ctx.fill();
+    },
+
+    _strokeDiamond: function(ctx, sx, sy, color, lineWidth) {
+        var hw = SB.ISO_TW / 2;
+        var hh = SB.ISO_TH / 2;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lineWidth || 1;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - hh);
+        ctx.lineTo(sx + hw, sy);
+        ctx.lineTo(sx, sy + hh);
+        ctx.lineTo(sx - hw, sy);
+        ctx.closePath();
+        ctx.stroke();
+    },
+
+    // Draw an isometric box (walls + top face)
+    // bx,by = tile origin, bw,bh = size in tiles, wallH = wall height px
+    _drawIsoBox: function(ctx, bx, by, bw, bh, wallH, topColor, leftColor, rightColor) {
+        var hw = SB.ISO_TW / 2;
+        var hh = SB.ISO_TH / 2;
+
+        // Footprint vertices at ground level
+        var north = { x: (bx - by) * hw, y: (bx + by) * hh - hh };
+        var east  = { x: (bx + bw - 1 - by) * hw + hw, y: (bx + bw - 1 + by) * hh };
+        var south = { x: (bx + bw - 1 - by - bh + 1) * hw, y: (bx + bw - 1 + by + bh - 1) * hh + hh };
+        var west  = { x: (bx - by - bh + 1) * hw - hw, y: (bx + by + bh - 1) * hh };
+
+        // Left wall (south-facing): west → south
+        ctx.fillStyle = leftColor;
+        ctx.beginPath();
+        ctx.moveTo(west.x, west.y - wallH);
+        ctx.lineTo(south.x, south.y - wallH);
+        ctx.lineTo(south.x, south.y);
+        ctx.lineTo(west.x, west.y);
+        ctx.closePath();
+        ctx.fill();
+
+        // Right wall (east-facing): south → east
+        ctx.fillStyle = rightColor;
+        ctx.beginPath();
+        ctx.moveTo(south.x, south.y - wallH);
+        ctx.lineTo(east.x, east.y - wallH);
+        ctx.lineTo(east.x, east.y);
+        ctx.lineTo(south.x, south.y);
+        ctx.closePath();
+        ctx.fill();
+
+        // Top face (raised)
+        ctx.fillStyle = topColor;
+        ctx.beginPath();
+        ctx.moveTo(north.x, north.y - wallH);
+        ctx.lineTo(east.x, east.y - wallH);
+        ctx.lineTo(south.x, south.y - wallH);
+        ctx.lineTo(west.x, west.y - wallH);
+        ctx.closePath();
+        ctx.fill();
+    },
+
+    // ═══════════════════════════════════════════
+    // INIT
+    // ═══════════════════════════════════════════
 
     init: function(canvasId) {
         this.canvas = document.getElementById(canvasId);
@@ -64,7 +158,6 @@ SB.Renderer = {
         var vpW = this.viewportW || 800;
         var vpH = this.viewportH || 600;
 
-        // Far stars: fixed in screen space, don't move with camera
         for (var i = 0; i < 100; i++) {
             this.farStars.push({
                 x: Math.random() * vpW,
@@ -78,7 +171,6 @@ SB.Renderer = {
             });
         }
 
-        // Near stars: move slightly with camera for parallax
         for (var j = 0; j < 50; j++) {
             this.nearStars.push({
                 x: Math.random() * vpW * 2 - vpW * 0.5,
@@ -104,19 +196,40 @@ SB.Renderer = {
         for (var i = 0; i < 120; i++) {
             var brightness = Math.floor(Math.random() * 15 + 10);
             fctx.fillStyle = 'rgb(' + brightness + ',' + brightness + ',' + (brightness + 10) + ')';
-            fctx.fillRect(
-                Math.floor(Math.random() * 64),
-                Math.floor(Math.random() * 64),
-                1, 1
-            );
+            fctx.fillRect(Math.floor(Math.random() * 64), Math.floor(Math.random() * 64), 1, 1);
         }
     },
+
+    _generateGrassNoise: function() {
+        this.grassNoise = [];
+        for (var y = 0; y < SB.WORLD_HEIGHT; y++) {
+            this.grassNoise[y] = [];
+            for (var x = 0; x < SB.WORLD_WIDTH; x++) {
+                this.grassNoise[y][x] = {
+                    color: Math.random(),
+                    hasFlower: Math.random() < 0.06,
+                    flowerType: Math.floor(Math.random() * 3),
+                    flowerX: (Math.random() - 0.5) * 16,
+                    flowerY: (Math.random() - 0.5) * 6,
+                };
+            }
+        }
+    },
+
+    regenerateGrassNoise: function() {
+        this._generateGrassNoise();
+        this._generateFogPattern();
+        this._generateStarfield();
+    },
+
+    // ═══════════════════════════════════════════
+    // CAMERA & CONTROLS
+    // ═══════════════════════════════════════════
 
     _createZoomButtons: function() {
         var container = document.getElementById('gameContainer');
         var self = this;
 
-        // Create button container
         var btnContainer = document.createElement('div');
         btnContainer.style.cssText = 'position:absolute;bottom:45px;left:10px;display:flex;flex-direction:column;gap:4px;z-index:10;';
 
@@ -137,15 +250,21 @@ SB.Renderer = {
             self.camera.zoom = SB.Utils.clamp(self.camera.zoom - 0.15, 0.25, 2.5);
         });
         var fitBtn = makeBtn('\u2922', function() {
-            // Fit entire island in view
-            var worldPx = SB.WORLD_WIDTH * SB.TILE_SIZE;
-            var worldPy = SB.WORLD_HEIGHT * SB.TILE_SIZE;
-            var zoomX = self.viewportW / worldPx;
-            var zoomY = self.viewportH / worldPy;
-            self.camera.zoom = Math.min(zoomX, zoomY) * 0.9;
-            self.camera.zoom = SB.Utils.clamp(self.camera.zoom, 0.25, 2.5);
-            self.camera.x = worldPx / 2;
-            self.camera.y = worldPy / 2;
+            // Fit entire iso world in view
+            var W = SB.WORLD_WIDTH;
+            var H = SB.WORLD_HEIGHT;
+            var hw = SB.ISO_TW / 2;
+            var hh = SB.ISO_TH / 2;
+            var worldPxW = (W + H) * hw;
+            var worldPxH = (W + H) * hh;
+            var zoomX = self.viewportW / worldPxW;
+            var zoomY = self.viewportH / worldPxH;
+            self.camera.zoom = Math.min(zoomX, zoomY) * 0.85;
+            self.camera.zoom = SB.Utils.clamp(self.camera.zoom, 0.15, 2.5);
+            // Center on world center tile
+            var center = self.tileToScreen(W / 2, H / 2);
+            self.camera.x = center.x;
+            self.camera.y = center.y;
             self.camera.targetX = self.camera.x;
             self.camera.targetY = self.camera.y;
             self.camera.followAgent = false;
@@ -205,57 +324,71 @@ SB.Renderer = {
     },
 
     _updateCamera: function(agent) {
-        var ts = SB.TILE_SIZE;
         if (this.camera.followAgent && agent) {
-            this.camera.targetX = agent.x * ts + ts / 2;
-            this.camera.targetY = agent.y * ts + ts / 2;
+            var pos = this.tileToScreen(agent.x, agent.y);
+            this.camera.targetX = pos.x;
+            this.camera.targetY = pos.y;
         }
         this.camera.x += (this.camera.targetX - this.camera.x) * this.camera.lerpSpeed;
         this.camera.y += (this.camera.targetY - this.camera.y) * this.camera.lerpSpeed;
     },
 
-    _generateGrassNoise: function() {
-        this.grassNoise = [];
-        for (var y = 0; y < SB.WORLD_HEIGHT; y++) {
-            this.grassNoise[y] = [];
-            for (var x = 0; x < SB.WORLD_WIDTH; x++) {
-                this.grassNoise[y][x] = {
-                    color: Math.random(),
-                    hasFlower: Math.random() < 0.06,
-                    flowerType: Math.floor(Math.random() * 3),
-                    flowerX: Math.random() * 14 + 3,
-                    flowerY: Math.random() * 14 + 3,
-                    grassBlades: [
-                        { x: Math.random() * 18 + 2, h: Math.random() * 5 + 3 },
-                        { x: Math.random() * 18 + 2, h: Math.random() * 5 + 3 },
-                    ],
-                };
-            }
+    // ═══════════════════════════════════════════
+    // VISIBLE RANGE (iso culling)
+    // ═══════════════════════════════════════════
+
+    _getVisibleRange: function(camX, camY, zoom) {
+        var hw = SB.ISO_TW / 2;
+        var hh = SB.ISO_TH / 2;
+        var vpW = this.viewportW / zoom;
+        var vpH = this.viewportH / zoom;
+
+        var corners = [
+            { x: camX, y: camY },
+            { x: camX + vpW, y: camY },
+            { x: camX, y: camY + vpH },
+            { x: camX + vpW, y: camY + vpH }
+        ];
+
+        var minTX = Infinity, maxTX = -Infinity;
+        var minTY = Infinity, maxTY = -Infinity;
+
+        for (var i = 0; i < 4; i++) {
+            var c = corners[i];
+            var tx = (c.x / hw + c.y / hh) / 2;
+            var ty = (c.y / hh - c.x / hw) / 2;
+            minTX = Math.min(minTX, Math.floor(tx));
+            maxTX = Math.max(maxTX, Math.ceil(tx));
+            minTY = Math.min(minTY, Math.floor(ty));
+            maxTY = Math.max(maxTY, Math.ceil(ty));
         }
+
+        var pad = 14; // extra padding for deep cliff underside
+        return {
+            minTX: Math.max(0, minTX - pad),
+            maxTX: Math.min(SB.WORLD_WIDTH - 1, maxTX + pad),
+            minTY: Math.max(0, minTY - pad),
+            maxTY: Math.min(SB.WORLD_HEIGHT - 1, maxTY + pad),
+        };
     },
 
-    regenerateGrassNoise: function() {
-        this._generateGrassNoise();
-        this._generateFogPattern();
-        this._generateStarfield();
-    },
+    // ═══════════════════════════════════════════
+    // STARFIELD
+    // ═══════════════════════════════════════════
 
     _drawStarfield: function(ctx) {
         var frame = this.animFrame;
 
-        // Far stars (fixed in screen space)
         for (var i = 0; i < this.farStars.length; i++) {
             var star = this.farStars[i];
             var twinkle = Math.sin(frame * star.twinkleSpeed + star.twinkleOffset);
             var alpha = star.baseAlpha + twinkle * 0.25;
             if (alpha < 0.1) continue;
-
             ctx.globalAlpha = alpha;
             ctx.fillStyle = star.color;
             ctx.fillRect(star.x, star.y, star.size, star.size);
         }
 
-        // Near stars (slight parallax with camera)
         var camOffX = this.camera.x * 0.02;
         var camOffY = this.camera.y * 0.02;
 
@@ -267,16 +400,12 @@ SB.Renderer = {
 
             var sx = nstar.x - camOffX * nstar.parallaxFactor * 20;
             var sy = nstar.y - camOffY * nstar.parallaxFactor * 20;
-
-            // Wrap around viewport
             sx = ((sx % this.viewportW) + this.viewportW) % this.viewportW;
             sy = ((sy % this.viewportH) + this.viewportH) % this.viewportH;
 
             ctx.globalAlpha = nalpha;
             ctx.fillStyle = nstar.color;
-
             if (nstar.size >= 3) {
-                // Larger stars get a slight glow
                 ctx.beginPath();
                 ctx.arc(sx, sy, nstar.size * 0.5, 0, Math.PI * 2);
                 ctx.fill();
@@ -284,32 +413,34 @@ SB.Renderer = {
                 ctx.fillRect(sx, sy, nstar.size, nstar.size);
             }
         }
-
         ctx.globalAlpha = 1;
     },
+
+    // ═══════════════════════════════════════════
+    // MAIN DRAW
+    // ═══════════════════════════════════════════
 
     draw: function(world, agent, time) {
         this.animFrame++;
         var ctx = this.ctx;
-        var ts = SB.TILE_SIZE;
 
         this._updateCamera(agent);
         world.updateFogPulses();
 
-        // Clear entire canvas with void/space background
+        // Clear
         ctx.fillStyle = SB.Colors.void_bg;
         ctx.fillRect(0, 0, this.width, this.height);
 
-        // Save state, set up clipping for viewport
+        // Clip viewport
         ctx.save();
         ctx.beginPath();
         ctx.rect(0, 0, this.viewportW, this.viewportH);
         ctx.clip();
 
-        // Draw starfield BEFORE camera transform (screen space)
+        // Starfield (screen space)
         this._drawStarfield(ctx);
 
-        // Apply camera transform
+        // Camera transform
         var zoom = this.camera.zoom;
         var camX = this.camera.x - (this.viewportW / 2) / zoom;
         var camY = this.camera.y - (this.viewportH / 2) / zoom;
@@ -318,683 +449,958 @@ SB.Renderer = {
         ctx.scale(zoom, zoom);
         ctx.translate(-camX, -camY);
 
-        // Compute visible tile range for culling
-        var minTX = Math.max(0, Math.floor(camX / ts) - 1);
-        var minTY = Math.max(0, Math.floor(camY / ts) - 1);
-        var maxTX = Math.min(SB.WORLD_WIDTH - 1, Math.ceil((camX + this.viewportW / zoom) / ts) + 1);
-        var maxTY = Math.min(SB.WORLD_HEIGHT - 1, Math.ceil((camY + this.viewportH / zoom) / ts) + 1);
+        var range = this._getVisibleRange(camX, camY, zoom);
 
-        // Draw tiles (only visible ones) - skip VOID tiles
-        for (var y = minTY; y <= maxTY; y++) {
-            for (var x = minTX; x <= maxTX; x++) {
-                var tile = world.tiles[y][x];
-                if (tile.type === SB.Tiles.VOID) continue; // Let starfield show through
+        // Pre-compute building draw points (draw at front-most tile)
+        var buildingDrawMap = {};
+        for (var bi = 0; bi < world.buildings.length; bi++) {
+            var b = world.buildings[bi];
+            var dty = b.y + b.height - 1;
+            var dtx = b.x + b.width - 1;
+            var key = dty * SB.WORLD_WIDTH + dtx;
+            if (!buildingDrawMap[key]) buildingDrawMap[key] = [];
+            buildingDrawMap[key].push(b);
+        }
 
-                var px = x * ts;
-                var py = y * ts;
-                var fogAlpha = world.getFogAlpha(x, y);
-                if (fogAlpha < 1.0) {
-                    this._drawTile(ctx, tile, px, py, ts, x, y);
+        // PASS 0: Massive island underside (one cohesive rock mass)
+        this._drawIslandUnderside(ctx, world);
+
+        // PASS 1: Ground tiles (all diamonds, back to front)
+        for (var ty = range.minTY; ty <= range.maxTY; ty++) {
+            for (var tx = range.minTX; tx <= range.maxTX; tx++) {
+                var tile = world.tiles[ty][tx];
+                if (tile.type === SB.Tiles.VOID) continue;
+
+                var pos = this.tileToScreen(tx, ty);
+                this._drawTile(ctx, tile, pos.x, pos.y, tx, ty);
+            }
+        }
+
+        // PASS 2: Cliff rim detail (thin edge where land meets void)
+        for (var cty = range.minTY; cty <= range.maxTY; cty++) {
+            for (var clx = range.minTX; clx <= range.maxTX; clx++) {
+                var ctile = world.tiles[cty][clx];
+                if (ctile.type === SB.Tiles.CLIFF) {
+                    var cpos = this.tileToScreen(clx, cty);
+                    this._drawCliffRim(ctx, clx, cty, cpos.x, cpos.y);
                 }
             }
         }
 
-        // Draw cliff edges (separate pass for depth effect)
-        for (var cy = minTY; cy <= maxTY; cy++) {
-            for (var cx = minTX; cx <= maxTX; cx++) {
-                var ctile = world.tiles[cy][cx];
-                if (ctile.type === SB.Tiles.CLIFF) {
-                    var cfogAlpha = world.getFogAlpha(cx, cy);
-                    if (cfogAlpha < 1.0) {
-                        this._drawCliffEdge(ctx, cx, cy, ts);
+        // PASS 3: Objects (resources, buildings, agent) — back to front
+        for (var oty = range.minTY; oty <= range.maxTY; oty++) {
+            for (var otx = range.minTX; otx <= range.maxTX; otx++) {
+                var otile = world.tiles[oty][otx];
+
+                // Resources
+                if (otile.resource && !otile.building && world.isRevealed(otx, oty)) {
+                    var rpos = this.tileToScreen(otx, oty);
+                    this._drawResource(ctx, otile, rpos.x, rpos.y);
+                }
+
+                // Buildings at this draw point
+                var bkey = oty * SB.WORLD_WIDTH + otx;
+                if (buildingDrawMap[bkey]) {
+                    for (var bdi = 0; bdi < buildingDrawMap[bkey].length; bdi++) {
+                        var building = buildingDrawMap[bkey][bdi];
+                        if (world.isRevealed(building.x, building.y)) {
+                            this._drawBuilding(ctx, building);
+                        }
                     }
                 }
-            }
-        }
 
-        // Draw resources
-        for (var ry = minTY; ry <= maxTY; ry++) {
-            for (var rx = minTX; rx <= maxTX; rx++) {
-                var rtile = world.tiles[ry][rx];
-                if (rtile.resource && !rtile.building && world.isRevealed(rx, ry)) {
-                    this._drawResource(ctx, rtile, rx * ts, ry * ts, ts);
+                // Agent
+                if (agent.x === otx && agent.y === oty) {
+                    var apos = this.tileToScreen(otx, oty);
+                    this._drawAgent(ctx, agent, apos.x, apos.y);
                 }
             }
         }
 
-        // Draw buildings
-        for (var bi = 0; bi < world.buildings.length; bi++) {
-            var building = world.buildings[bi];
-            if (world.isRevealed(building.x, building.y)) {
-                this._drawBuilding(ctx, building, ts);
-            }
-        }
-
-        // Draw agent
-        this._drawAgent(ctx, agent, ts);
-
         // Day/night overlay
-        this._drawDayNight(ctx, world, agent, time, ts);
+        this._drawDayNight(ctx, world, agent, time, range);
 
-        // Draw fog overlay (skip void tiles)
-        this._drawFog(ctx, world, ts, minTX, minTY, maxTX, maxTY);
+        // Fog overlay
+        this._drawFog(ctx, world, range);
 
-        // Draw fog pulse animations
-        this._drawFogPulses(ctx, world, ts);
+        // Fog pulses
+        this._drawFogPulses(ctx, world);
 
-        // Restore camera transform
-        ctx.restore();
-        // Restore clipping
-        ctx.restore();
+        ctx.restore(); // camera
+        ctx.restore(); // clip
 
         // HUD
         this._drawHUD(ctx, world, agent, time);
     },
 
-    _drawTile: function(ctx, tile, px, py, ts, x, y) {
-        var noise = this.grassNoise[y] ? this.grassNoise[y][x] : null;
+    // ═══════════════════════════════════════════
+    // TILE DRAWING
+    // ═══════════════════════════════════════════
+
+    _drawTile: function(ctx, tile, sx, sy, tx, ty) {
+        var noise = this.grassNoise[ty] ? this.grassNoise[ty][tx] : null;
 
         switch (tile.type) {
             case SB.Tiles.GRASS: {
                 var colors = [SB.Colors.grass1, SB.Colors.grass2, SB.Colors.grass3, SB.Colors.grass4];
                 var ci = noise ? Math.floor(noise.color * 4) : 0;
-                ctx.fillStyle = colors[ci];
-                ctx.fillRect(px, py, ts, ts);
+                this._fillDiamond(ctx, sx, sy, colors[ci]);
 
-                if (noise) {
-                    ctx.strokeStyle = 'rgba(80, 160, 60, 0.25)';
-                    ctx.lineWidth = 1;
-                    for (var b = 0; b < noise.grassBlades.length; b++) {
-                        var blade = noise.grassBlades[b];
-                        ctx.beginPath();
-                        ctx.moveTo(px + blade.x, py + ts);
-                        ctx.lineTo(px + blade.x - 1, py + ts - blade.h);
-                        ctx.stroke();
-                    }
+                // Subtle edge highlight
+                ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+                ctx.lineWidth = 0.5;
+                var hw = SB.ISO_TW / 2;
+                var hh = SB.ISO_TH / 2;
+                ctx.beginPath();
+                ctx.moveTo(sx - hw, sy);
+                ctx.lineTo(sx, sy - hh);
+                ctx.lineTo(sx + hw, sy);
+                ctx.stroke();
 
-                    if (noise.hasFlower && !tile.resource && !tile.building) {
-                        var flowerColors = [SB.Colors.grass_flower1, SB.Colors.grass_flower2, SB.Colors.grass_flower3];
-                        ctx.fillStyle = flowerColors[noise.flowerType];
-                        ctx.beginPath();
-                        ctx.arc(px + noise.flowerX, py + noise.flowerY, 2, 0, Math.PI * 2);
-                        ctx.fill();
-                        ctx.fillStyle = '#fff';
-                        ctx.beginPath();
-                        ctx.arc(px + noise.flowerX, py + noise.flowerY, 0.8, 0, Math.PI * 2);
-                        ctx.fill();
-                    }
+                // Flower
+                if (noise && noise.hasFlower && !tile.resource && !tile.building) {
+                    var flowerColors = [SB.Colors.grass_flower1, SB.Colors.grass_flower2, SB.Colors.grass_flower3];
+                    ctx.fillStyle = flowerColors[noise.flowerType];
+                    ctx.beginPath();
+                    ctx.arc(sx + noise.flowerX, sy + noise.flowerY, 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#fff';
+                    ctx.beginPath();
+                    ctx.arc(sx + noise.flowerX, sy + noise.flowerY, 0.6, 0, Math.PI * 2);
+                    ctx.fill();
                 }
                 break;
             }
             case SB.Tiles.CLIFF: {
-                // Draw cliff top surface (slightly darker earth tone)
-                ctx.fillStyle = SB.Colors.cliff_top;
-                ctx.fillRect(px, py, ts, ts);
-                // Rocky texture
+                this._fillDiamond(ctx, sx, sy, SB.Colors.cliff_top);
+                // Rocky texture dots
                 ctx.fillStyle = SB.Colors.cliff_edge;
-                ctx.fillRect(px + 2, py + 4, 3, 2);
-                ctx.fillRect(px + 10, py + 8, 4, 2);
-                ctx.fillRect(px + 6, py + 16, 3, 2);
+                ctx.fillRect(sx - 4, sy - 1, 2, 1);
+                ctx.fillRect(sx + 3, sy + 1, 2, 1);
+                ctx.fillRect(sx - 1, sy + 3, 2, 1);
                 break;
             }
             case SB.Tiles.WATER: {
                 var t = this.animFrame * 0.03;
-                var wave = Math.sin(t + x * 0.8 + y * 0.6) * 0.3 + 0.5;
-                var wave2 = Math.sin(t * 0.7 + x * 0.5 - y * 0.9) * 0.2;
+                var wave = Math.sin(t + tx * 0.8 + ty * 0.6) * 0.3 + 0.5;
+                var wave2 = Math.sin(t * 0.7 + tx * 0.5 - ty * 0.9) * 0.2;
 
-                ctx.fillStyle = wave > 0.5 ? SB.Colors.water_light : SB.Colors.water_mid;
-                ctx.fillRect(px, py, ts, ts);
+                var waterColor = wave > 0.5 ? SB.Colors.water_light : SB.Colors.water_mid;
+                if (wave + wave2 < 0.4) waterColor = SB.Colors.water_deep;
+                this._fillDiamond(ctx, sx, sy, waterColor);
 
-                if (wave + wave2 < 0.4) {
-                    ctx.fillStyle = SB.Colors.water_deep;
-                    ctx.fillRect(px, py, ts, ts);
-                }
-
+                // Shimmer highlight
                 if (wave > 0.7) {
                     ctx.fillStyle = 'rgba(150, 210, 255, 0.15)';
-                    var hw = ts * 0.6;
-                    ctx.fillRect(px + (ts - hw) / 2, py + (ts - hw) / 2, hw, hw * 0.3);
+                    ctx.beginPath();
+                    ctx.ellipse(sx, sy - 1, 6, 2, 0, 0, Math.PI * 2);
+                    ctx.fill();
                 }
                 break;
             }
             case SB.Tiles.STONE_DEPOSIT: {
-                ctx.fillStyle = SB.Colors.stone_deposit;
-                ctx.fillRect(px, py, ts, ts);
+                // Slightly elevated rocky terrain
+                var mh = 6; // subtle elevation
+                var hw = SB.ISO_TW / 2;
+                var hh = SB.ISO_TH / 2;
+
+                // South wall face (left-front)
+                ctx.fillStyle = '#6a6068';
+                ctx.beginPath();
+                ctx.moveTo(sx - hw, sy);
+                ctx.lineTo(sx, sy + hh);
+                ctx.lineTo(sx, sy + hh + mh);
+                ctx.lineTo(sx - hw, sy + mh);
+                ctx.closePath();
+                ctx.fill();
+
+                // East wall face (right-front, darker)
+                ctx.fillStyle = '#4a4248';
+                ctx.beginPath();
+                ctx.moveTo(sx, sy + hh);
+                ctx.lineTo(sx + hw, sy);
+                ctx.lineTo(sx + hw, sy + mh);
+                ctx.lineTo(sx, sy + hh + mh);
+                ctx.closePath();
+                ctx.fill();
+
+                // Top face (elevated diamond)
+                this._fillDiamond(ctx, sx, sy, SB.Colors.stone_deposit);
+
+                // Rocky texture on top
                 ctx.fillStyle = SB.Colors.stone_deposit_dark;
-                ctx.fillRect(px + 3, py + 5, ts - 8, 1);
-                ctx.fillRect(px + 8, py + 12, ts - 12, 1);
-                ctx.fillStyle = 'rgba(255,255,255,0.08)';
-                ctx.fillRect(px, py, ts, 2);
+                ctx.fillRect(sx - 6, sy - 1, 3, 2);
+                ctx.fillRect(sx + 2, sy + 1, 4, 2);
+                ctx.fillStyle = SB.Colors.stone_highlight;
+                ctx.fillRect(sx - 3, sy - 4, 5, 1);
+                ctx.fillRect(sx + 1, sy - 2, 3, 1);
                 break;
             }
             case SB.Tiles.DIRT: {
-                ctx.fillStyle = SB.Colors.dirt;
-                ctx.fillRect(px, py, ts, ts);
+                this._fillDiamond(ctx, sx, sy, SB.Colors.dirt);
                 ctx.fillStyle = SB.Colors.dirt_dark;
-                ctx.fillRect(px + 4, py + 6, 2, 2);
-                ctx.fillRect(px + 14, py + 10, 2, 1);
+                ctx.fillRect(sx - 3, sy - 1, 2, 1);
+                ctx.fillRect(sx + 2, sy + 2, 2, 1);
                 break;
             }
             case SB.Tiles.FARMLAND: {
-                ctx.fillStyle = SB.Colors.farmland;
-                ctx.fillRect(px, py, ts, ts);
-                ctx.fillStyle = SB.Colors.farmland_dark;
-                for (var row = 0; row < 3; row++) {
-                    ctx.fillRect(px + 1, py + 4 + row * 7, ts - 2, 2);
+                this._fillDiamond(ctx, sx, sy, SB.Colors.farmland);
+                // Furrow lines (iso-aligned)
+                ctx.strokeStyle = SB.Colors.farmland_dark;
+                ctx.lineWidth = 1;
+                for (var row = -2; row <= 2; row++) {
+                    var fy = sy + row * 3;
+                    ctx.beginPath();
+                    ctx.moveTo(sx - 8 + Math.abs(row) * 2, fy);
+                    ctx.lineTo(sx + 8 - Math.abs(row) * 2, fy);
+                    ctx.stroke();
                 }
+                ctx.lineWidth = 1;
+                break;
+            }
+            case SB.Tiles.SAND: {
+                var sandColors = [SB.Colors.sand1, SB.Colors.sand2, SB.Colors.sand3];
+                var sci = noise ? Math.floor(noise.color * 3) : 0;
+                this._fillDiamond(ctx, sx, sy, sandColors[sci]);
+
+                // Sandy texture dots
+                ctx.fillStyle = SB.Colors.sand_dark;
+                ctx.fillRect(sx - 5, sy - 1, 1, 1);
+                ctx.fillRect(sx + 3, sy + 2, 1, 1);
+                ctx.fillRect(sx - 2, sy + 3, 1, 1);
+
+                // Subtle edge
+                var hw = SB.ISO_TW / 2;
+                var hh = SB.ISO_TH / 2;
+                ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+                ctx.lineWidth = 0.5;
+                ctx.beginPath();
+                ctx.moveTo(sx, sy + hh);
+                ctx.lineTo(sx + hw, sy);
+                ctx.stroke();
+                break;
+            }
+            case SB.Tiles.HILL: {
+                var hillColors = [SB.Colors.hill1, SB.Colors.hill2, SB.Colors.hill3, SB.Colors.hill4];
+                var hci = noise ? Math.floor(noise.color * 4) : 0;
+                var hw = SB.ISO_TW / 2;
+                var hh = SB.ISO_TH / 2;
+                var elev = 3; // subtle hill elevation
+
+                // South wall face (earthy)
+                ctx.fillStyle = '#6a5a40';
+                ctx.beginPath();
+                ctx.moveTo(sx - hw, sy);
+                ctx.lineTo(sx, sy + hh);
+                ctx.lineTo(sx, sy + hh + elev);
+                ctx.lineTo(sx - hw, sy + elev);
+                ctx.closePath();
+                ctx.fill();
+
+                // East wall face (darker)
+                ctx.fillStyle = '#4a3a28';
+                ctx.beginPath();
+                ctx.moveTo(sx, sy + hh);
+                ctx.lineTo(sx + hw, sy);
+                ctx.lineTo(sx + hw, sy + elev);
+                ctx.lineTo(sx, sy + hh + elev);
+                ctx.closePath();
+                ctx.fill();
+
+                // Top face (elevated diamond)
+                this._fillDiamond(ctx, sx, sy, hillColors[hci]);
+
+                // Highlight on north edges
+                ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(sx - hw, sy);
+                ctx.lineTo(sx, sy - hh);
+                ctx.lineTo(sx + hw, sy);
+                ctx.stroke();
+
+                // Flower on hill
+                if (noise && noise.hasFlower && !tile.resource && !tile.building) {
+                    var flowerColors = [SB.Colors.grass_flower1, SB.Colors.grass_flower2, SB.Colors.grass_flower3];
+                    ctx.fillStyle = flowerColors[noise.flowerType];
+                    ctx.beginPath();
+                    ctx.arc(sx + noise.flowerX * 0.7, sy + noise.flowerY * 0.5, 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.lineWidth = 1;
                 break;
             }
         }
     },
 
-    _drawCliffEdge: function(ctx, x, y, ts) {
-        var px = x * ts;
-        var py = y * ts;
-        var neighbors = SB.World.getVoidNeighbors(x, y);
-        var cliffDepth = 8;
+    // ═══════════════════════════════════════════
+    // ISLAND UNDERSIDE (one massive rock formation)
+    // ═══════════════════════════════════════════
 
-        // Draw cliff face extending into void direction
-        if (neighbors.bottom) {
-            // Bottom edge: draw cliff face below
-            ctx.fillStyle = SB.Colors.cliff_face;
-            ctx.fillRect(px, py + ts, ts, cliffDepth);
-            // Shadow at bottom
-            ctx.fillStyle = SB.Colors.cliff_shadow;
-            ctx.fillRect(px, py + ts + cliffDepth - 3, ts, 3);
-            // Highlight at top of cliff face
-            ctx.fillStyle = 'rgba(120,100,80,0.3)';
-            ctx.fillRect(px, py + ts, ts, 2);
+    // Massive underside: oversized wall + tapered cone (drawn before ground tiles)
+    _drawIslandUnderside: function(ctx, world) {
+        var hw = SB.ISO_TW / 2;
+        var hh = SB.ISO_TH / 2;
+        var cx = Math.floor(SB.WORLD_WIDTH / 2);
+        var cy = Math.floor(SB.WORLD_HEIGHT / 2);
+        var center = this.tileToScreen(cx, cy);
+
+        // Oversized so ground tiles cover the excess on top
+        var isoRX = 52 * hw * 1.5;
+        var isoRY = 52 * hh * 1.5;
+        var wallH = 80;
+
+        // 1) Thick rock wall band — same depth everywhere
+        // SW wall face (lit)
+        ctx.fillStyle = '#5a4a38';
+        ctx.beginPath();
+        ctx.moveTo(center.x - isoRX, center.y);
+        ctx.lineTo(center.x, center.y + isoRY);
+        ctx.lineTo(center.x, center.y + isoRY + wallH);
+        ctx.lineTo(center.x - isoRX, center.y + wallH);
+        ctx.closePath();
+        ctx.fill();
+        // SE wall face (shadow)
+        ctx.fillStyle = '#3a2a1e';
+        ctx.beginPath();
+        ctx.moveTo(center.x, center.y + isoRY);
+        ctx.lineTo(center.x + isoRX, center.y);
+        ctx.lineTo(center.x + isoRX, center.y + wallH);
+        ctx.lineTo(center.x, center.y + isoRY + wallH);
+        ctx.closePath();
+        ctx.fill();
+
+        // Strata lines on wall
+        ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+        ctx.lineWidth = 1;
+        for (var s = 1; s <= 3; s++) {
+            var sy = center.y + wallH * s * 0.25;
+            ctx.beginPath();
+            ctx.moveTo(center.x - isoRX + 10, sy);
+            ctx.lineTo(center.x - 10, sy + isoRY);
+            ctx.stroke();
         }
-        if (neighbors.right) {
-            ctx.fillStyle = SB.Colors.cliff_face;
-            ctx.fillRect(px + ts, py, cliffDepth, ts);
-            ctx.fillStyle = SB.Colors.cliff_shadow;
-            ctx.fillRect(px + ts + cliffDepth - 3, py, 3, ts);
-            ctx.fillStyle = 'rgba(120,100,80,0.2)';
-            ctx.fillRect(px + ts, py, 2, ts);
-        }
-        if (neighbors.left) {
-            ctx.fillStyle = SB.Colors.cliff_shadow;
-            ctx.fillRect(px - cliffDepth, py, cliffDepth, ts);
-            ctx.fillStyle = SB.Colors.cliff_face;
-            ctx.fillRect(px - cliffDepth + 3, py, cliffDepth - 3, ts);
-        }
-        if (neighbors.top) {
-            ctx.fillStyle = SB.Colors.cliff_shadow;
-            ctx.fillRect(px, py - cliffDepth, ts, cliffDepth);
-            ctx.fillStyle = SB.Colors.cliff_face;
-            ctx.fillRect(px, py - cliffDepth + 3, ts, cliffDepth - 3);
+        ctx.strokeStyle = 'rgba(0,0,0,0.10)';
+        for (var s = 1; s <= 2; s++) {
+            var sy = center.y + wallH * s * 0.33;
+            ctx.beginPath();
+            ctx.moveTo(center.x + 10, sy + isoRY);
+            ctx.lineTo(center.x + isoRX - 10, sy);
+            ctx.stroke();
         }
 
-        // Corner shadows for more depth when two edges meet
-        if (neighbors.bottom && neighbors.right) {
-            ctx.fillStyle = SB.Colors.cliff_shadow;
-            ctx.fillRect(px + ts, py + ts, cliffDepth, cliffDepth);
-        }
-        if (neighbors.bottom && neighbors.left) {
-            ctx.fillStyle = SB.Colors.cliff_shadow;
-            ctx.fillRect(px - cliffDepth, py + ts, cliffDepth, cliffDepth);
-        }
+        // 2) Below wall: tapered cone converging to a point
+        var taperDepth = 350;
+        var bandCount = 14;
+        for (var i = 0; i < bandCount; i++) {
+            var t0 = i / bandCount;
+            var t1 = (i + 1) / bandCount;
+            var scale0 = 1.0 - t0 * t0 * 0.97;
+            var scale1 = 1.0 - t1 * t1 * 0.97;
+            var d0 = wallH + t0 * taperDepth;
+            var d1 = wallH + t1 * taperDepth;
+            var rx0 = isoRX * scale0, ry0 = isoRY * scale0;
+            var rx1 = isoRX * scale1, ry1 = isoRY * scale1;
+            var cy0 = center.y + d0, cy1 = center.y + d1;
 
-        // Subtle inner shadow on the cliff tile itself
-        if (neighbors.bottom || neighbors.right || neighbors.left || neighbors.top) {
-            ctx.fillStyle = 'rgba(0,0,0,0.12)';
-            if (neighbors.bottom) ctx.fillRect(px, py + ts - 3, ts, 3);
-            if (neighbors.right) ctx.fillRect(px + ts - 3, py, 3, ts);
-            if (neighbors.left) ctx.fillRect(px, py, 3, ts);
-            if (neighbors.top) ctx.fillRect(px, py, ts, 3);
+            var brightness = 38 - t0 * 34;
+            // SW taper
+            ctx.fillStyle = 'rgb(' + Math.max(Math.floor(brightness * 1.0), 4) + ',' +
+                Math.max(Math.floor(brightness * 0.75), 3) + ',' +
+                Math.max(Math.floor(brightness * 0.55), 2) + ')';
+            ctx.beginPath();
+            ctx.moveTo(center.x - rx0, cy0);
+            ctx.lineTo(center.x, cy0 + ry0);
+            ctx.lineTo(center.x, cy1 + ry1);
+            ctx.lineTo(center.x - rx1, cy1);
+            ctx.closePath();
+            ctx.fill();
+            // SE taper
+            ctx.fillStyle = 'rgb(' + Math.max(Math.floor(brightness * 0.6), 3) + ',' +
+                Math.max(Math.floor(brightness * 0.45), 2) + ',' +
+                Math.max(Math.floor(brightness * 0.35), 2) + ')';
+            ctx.beginPath();
+            ctx.moveTo(center.x, cy0 + ry0);
+            ctx.lineTo(center.x + rx0, cy0);
+            ctx.lineTo(center.x + rx1, cy1);
+            ctx.lineTo(center.x, cy1 + ry1);
+            ctx.closePath();
+            ctx.fill();
         }
+        ctx.lineWidth = 1;
     },
 
-    _drawResource: function(ctx, tile, px, py, ts) {
-        var cx = px + ts / 2;
-        var cy = py + ts / 2;
+    // Per-tile cliff rim — thin rocky edge detail on top of the underside
+    _drawCliffRim: function(ctx, tx, ty, sx, sy) {
+        var hw = SB.ISO_TW / 2;
+        var hh = SB.ISO_TH / 2;
+        var neighbors = SB.World.getVoidNeighbors(tx, ty);
+        var rimH = 6;
 
+        if (neighbors.bottom) {
+            ctx.fillStyle = '#6a5a45';
+            ctx.beginPath();
+            ctx.moveTo(sx - hw, sy);
+            ctx.lineTo(sx, sy + hh);
+            ctx.lineTo(sx, sy + hh + rimH);
+            ctx.lineTo(sx - hw, sy + rimH);
+            ctx.closePath();
+            ctx.fill();
+        }
+        if (neighbors.right) {
+            ctx.fillStyle = '#4a3a2a';
+            ctx.beginPath();
+            ctx.moveTo(sx, sy + hh);
+            ctx.lineTo(sx + hw, sy);
+            ctx.lineTo(sx + hw, sy + rimH);
+            ctx.lineTo(sx, sy + hh + rimH);
+            ctx.closePath();
+            ctx.fill();
+        }
+        ctx.lineWidth = 1;
+    },
+
+    // ═══════════════════════════════════════════
+    // RESOURCES
+    // ═══════════════════════════════════════════
+
+    _drawResource: function(ctx, tile, sx, sy) {
         switch (tile.resource) {
             case SB.Resources.TREE: {
-                var sway = Math.sin(this.animFrame * 0.02 + px * 0.1) * 0.5;
+                var sway = Math.sin(this.animFrame * 0.02 + sx * 0.1) * 0.5;
 
-                ctx.fillStyle = 'rgba(0,0,0,0.15)';
+                // Shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.18)';
                 ctx.beginPath();
-                ctx.ellipse(cx + 1, py + ts - 2, 6, 3, 0, 0, Math.PI * 2);
+                ctx.ellipse(sx + 2, sy + 6, 8, 3, 0.3, 0, Math.PI * 2);
                 ctx.fill();
 
+                // Trunk
                 ctx.fillStyle = SB.Colors.tree_trunk;
-                ctx.fillRect(cx - 2, cy + 2, 4, ts / 2 - 3);
+                ctx.fillRect(sx - 1.5, sy - 8, 3, 16);
                 ctx.fillStyle = SB.Colors.tree_trunk_dark;
-                ctx.fillRect(cx - 1, cy + 4, 1, ts / 2 - 6);
+                ctx.fillRect(sx - 0.5, sy - 6, 1, 12);
 
-                var canopyColors = [SB.Colors.tree_canopy1, SB.Colors.tree_canopy2];
-                ctx.fillStyle = canopyColors[0];
+                // Canopy
+                ctx.fillStyle = SB.Colors.tree_canopy1;
                 ctx.beginPath();
-                ctx.arc(cx - 1 + sway, cy - 1, ts / 2.5 + 1, 0, Math.PI * 2);
+                ctx.arc(sx + sway, sy - 10, 9, 0, Math.PI * 2);
                 ctx.fill();
-                ctx.fillStyle = canopyColors[1];
+                ctx.fillStyle = SB.Colors.tree_canopy2;
                 ctx.beginPath();
-                ctx.arc(cx + 1 + sway, cy + 1, ts / 3, 0, Math.PI * 2);
+                ctx.arc(sx + 2 + sway, sy - 8, 6, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.fillStyle = SB.Colors.tree_highlight;
                 ctx.beginPath();
-                ctx.arc(cx - 2 + sway, cy - 3, ts / 6, 0, Math.PI * 2);
+                ctx.arc(sx - 3 + sway, sy - 13, 3.5, 0, Math.PI * 2);
                 ctx.fill();
                 break;
             }
             case SB.Resources.BERRY_BUSH: {
-                ctx.fillStyle = 'rgba(0,0,0,0.12)';
+                // Shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.14)';
                 ctx.beginPath();
-                ctx.ellipse(cx, py + ts - 2, 7, 3, 0, 0, Math.PI * 2);
+                ctx.ellipse(sx + 1, sy + 5, 8, 3, 0, 0, Math.PI * 2);
                 ctx.fill();
 
+                // Bush body
                 ctx.fillStyle = SB.Colors.berry_bush;
                 ctx.beginPath();
-                ctx.arc(cx, cy + 1, ts / 2.8, 0, Math.PI * 2);
+                ctx.arc(sx, sy - 1, 8, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.fillStyle = SB.Colors.berry_bush_dark;
                 ctx.beginPath();
-                ctx.arc(cx + 1, cy + 3, ts / 4, 0, Math.PI * 2);
+                ctx.arc(sx + 2, sy + 2, 5, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.fillStyle = 'rgba(100, 200, 80, 0.3)';
                 ctx.beginPath();
-                ctx.arc(cx - 2, cy - 2, ts / 5, 0, Math.PI * 2);
+                ctx.arc(sx - 3, sy - 4, 3, 0, Math.PI * 2);
                 ctx.fill();
 
+                // Berries
                 if (tile.resourceAmount > 0) {
                     var positions = [
-                        { x: -4, y: -2 }, { x: 3, y: -3 }, { x: 0, y: 3 },
-                        { x: -3, y: 2 }, { x: 4, y: 1 },
+                        { x: -5, y: -3 }, { x: 4, y: -4 }, { x: 0, y: 3 },
+                        { x: -4, y: 2 }, { x: 5, y: 1 },
                     ];
                     for (var i = 0; i < Math.min(tile.resourceAmount, 4); i++) {
                         var p = positions[i];
                         ctx.fillStyle = SB.Colors.berry;
                         ctx.beginPath();
-                        ctx.arc(cx + p.x, cy + p.y, 2.5, 0, Math.PI * 2);
+                        ctx.arc(sx + p.x, sy + p.y, 2.5, 0, Math.PI * 2);
                         ctx.fill();
                         ctx.fillStyle = SB.Colors.berry_highlight;
                         ctx.beginPath();
-                        ctx.arc(cx + p.x - 0.5, cy + p.y - 1, 1, 0, Math.PI * 2);
+                        ctx.arc(sx + p.x - 0.5, sy + p.y - 1, 1, 0, Math.PI * 2);
                         ctx.fill();
                     }
                 }
                 break;
             }
             case SB.Resources.STONE: {
-                ctx.fillStyle = 'rgba(0,0,0,0.15)';
+                // Shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.2)';
                 ctx.beginPath();
-                ctx.ellipse(cx + 1, cy + 5, 7, 3, 0, 0, Math.PI * 2);
+                ctx.ellipse(sx + 2, sy + 6, 10, 4, 0.2, 0, Math.PI * 2);
                 ctx.fill();
 
-                ctx.fillStyle = SB.Colors.stone_resource;
+                // Mountain boulder — tall rocky peak
+                // Left face (lit)
+                ctx.fillStyle = '#999';
                 ctx.beginPath();
-                ctx.moveTo(cx - 7, cy + 4);
-                ctx.lineTo(cx - 5, cy - 4);
-                ctx.lineTo(cx + 2, cy - 5);
-                ctx.lineTo(cx + 7, cy - 2);
-                ctx.lineTo(cx + 6, cy + 4);
+                ctx.moveTo(sx - 9, sy + 4);
+                ctx.lineTo(sx - 2, sy - 14);
+                ctx.lineTo(sx + 1, sy - 10);
+                ctx.lineTo(sx, sy + 4);
                 ctx.closePath();
                 ctx.fill();
 
+                // Right face (shadow)
+                ctx.fillStyle = '#6a6a6a';
+                ctx.beginPath();
+                ctx.moveTo(sx + 1, sy - 10);
+                ctx.lineTo(sx - 2, sy - 14);
+                ctx.lineTo(sx + 4, sy - 11);
+                ctx.lineTo(sx + 9, sy + 2);
+                ctx.lineTo(sx, sy + 4);
+                ctx.closePath();
+                ctx.fill();
+
+                // Snow/highlight cap on top
                 ctx.fillStyle = SB.Colors.stone_highlight;
                 ctx.beginPath();
-                ctx.moveTo(cx - 5, cy - 4);
-                ctx.lineTo(cx + 2, cy - 5);
-                ctx.lineTo(cx + 1, cy - 1);
-                ctx.lineTo(cx - 4, cy - 1);
+                ctx.moveTo(sx - 2, sy - 14);
+                ctx.lineTo(sx + 4, sy - 11);
+                ctx.lineTo(sx + 1, sy - 9);
                 ctx.closePath();
                 ctx.fill();
 
-                ctx.fillStyle = SB.Colors.stone_shadow;
+                // Smaller secondary rock
+                ctx.fillStyle = '#888';
                 ctx.beginPath();
-                ctx.moveTo(cx + 7, cy - 2);
-                ctx.lineTo(cx + 6, cy + 4);
-                ctx.lineTo(cx + 2, cy + 3);
-                ctx.lineTo(cx + 3, cy - 1);
+                ctx.moveTo(sx + 4, sy + 4);
+                ctx.lineTo(sx + 6, sy - 4);
+                ctx.lineTo(sx + 10, sy + 2);
                 ctx.closePath();
                 ctx.fill();
+                ctx.fillStyle = '#666';
+                ctx.beginPath();
+                ctx.moveTo(sx + 6, sy - 4);
+                ctx.lineTo(sx + 10, sy + 2);
+                ctx.lineTo(sx + 8, sy + 4);
+                ctx.closePath();
+                ctx.fill();
+                break;
+            }
+            case SB.Resources.TALL_GRASS: {
+                if (tile.resourceAmount <= 0) break;
+                // Several grass blades
+                var bladePositions = [
+                    {x: -6, y: -2}, {x: -2, y: -4}, {x: 3, y: -1},
+                    {x: -4, y: 2}, {x: 1, y: 3}, {x: 5, y: 0}
+                ];
+                for (var gi = 0; gi < Math.min(tile.resourceAmount * 3, bladePositions.length); gi++) {
+                    var bp = bladePositions[gi];
+                    var sway = Math.sin(this.animFrame * 0.03 + bp.x * 0.5) * 1;
+                    ctx.strokeStyle = SB.Colors.tall_grass_blade;
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.moveTo(sx + bp.x, sy + bp.y + 2);
+                    ctx.quadraticCurveTo(sx + bp.x + sway, sy + bp.y - 4, sx + bp.x + sway * 1.5, sy + bp.y - 8);
+                    ctx.stroke();
+                }
+                ctx.lineWidth = 1;
                 break;
             }
         }
     },
 
-    _drawBuilding: function(ctx, building, ts) {
-        var px = building.x * ts;
-        var py = building.y * ts;
-        var w = building.width * ts;
-        var h = building.height * ts;
+    // ═══════════════════════════════════════════
+    // BUILDINGS
+    // ═══════════════════════════════════════════
+
+    _drawBuilding: function(ctx, building) {
+        var hw = SB.ISO_TW / 2;
+        var hh = SB.ISO_TH / 2;
+        var bx = building.x;
+        var by = building.y;
+        var bw = building.width;
+        var bh = building.height;
+
+        // Building center in screen space
+        var centerTX = bx + (bw - 1) / 2;
+        var centerTY = by + (bh - 1) / 2;
+        var center = this.tileToScreen(centerTX, centerTY);
 
         switch (building.type) {
             case SB.BuildingTypes.SHELTER: {
+                var wallH = 18;
+
+                // Shadow
+                var south = this.tileToScreen(bx + bw - 1, by + bh - 1);
                 ctx.fillStyle = 'rgba(0,0,0,0.2)';
-                ctx.fillRect(px + 3, py + h - 2, w - 4, 4);
+                ctx.beginPath();
+                ctx.ellipse(south.x, south.y + hh + 6, bw * hw * 0.7, bh * hh * 0.4, 0, 0, Math.PI * 2);
+                ctx.fill();
 
-                ctx.fillStyle = SB.Colors.dirt;
-                ctx.fillRect(px + 2, py + 2, w - 4, h - 4);
+                // Main box (walls)
+                this._drawIsoBox(ctx, bx, by, bw, bh, wallH,
+                    SB.Colors.shelter_roof, SB.Colors.shelter_wall, SB.Colors.shelter_wall_dark);
 
-                ctx.fillStyle = SB.Colors.shelter_wall;
-                ctx.fillRect(px + 2, py + 2, w - 4, 4);
-                ctx.fillRect(px + 2, py + h - 6, w - 4, 4);
-                ctx.fillRect(px + 2, py + 2, 4, h - 4);
-                ctx.fillRect(px + w - 6, py + 2, 4, h - 4);
+                // Roof ridge highlight
+                var north = { x: (bx - by) * hw, y: (bx + by) * hh - hh - wallH };
+                var east = { x: (bx + bw - 1 - by) * hw + hw, y: (bx + bw - 1 + by) * hh - wallH };
+                var southR = { x: (bx + bw - 1 - by - bh + 1) * hw, y: (bx + bw - 1 + by + bh - 1) * hh + hh - wallH };
+                var west = { x: (bx - by - bh + 1) * hw - hw, y: (bx + by + bh - 1) * hh - wallH };
 
-                ctx.fillStyle = SB.Colors.shelter_wall_dark;
-                ctx.fillRect(px + 2, py + h - 8, w - 4, 2);
-
-                ctx.fillStyle = SB.Colors.shelter_roof;
-                ctx.fillRect(px + 6, py + 6, w - 12, h - 14);
-                ctx.fillStyle = SB.Colors.shelter_roof_dark;
-                for (var si = 0; si < 3; si++) {
-                    ctx.fillRect(px + 6, py + 8 + si * 8, w - 12, 1);
-                }
-
-                ctx.fillStyle = SB.Colors.shelter_door;
-                var doorX = px + w / 2 - 4;
-                var doorY = py + h - 10;
-                ctx.fillRect(doorX, doorY, 8, 8);
-                ctx.fillStyle = SB.Colors.shelter_wall;
-                ctx.fillRect(doorX + 6, doorY + 4, 1.5, 1.5);
-
-                ctx.fillStyle = SB.Colors.shelter_window;
-                ctx.fillRect(px + 8, py + 10, 6, 5);
-                ctx.fillRect(px + w - 14, py + 10, 6, 5);
-                ctx.strokeStyle = SB.Colors.shelter_wall_dark;
+                // Roof shingle lines
+                ctx.strokeStyle = SB.Colors.shelter_roof_dark;
                 ctx.lineWidth = 0.5;
-                ctx.strokeRect(px + 8, py + 10, 6, 5);
-                ctx.strokeRect(px + w - 14, py + 10, 6, 5);
+                for (var ri = 1; ri <= 2; ri++) {
+                    var t = ri / 3;
+                    var y1 = north.y + (southR.y - north.y) * t;
+                    var x1l = north.x + (west.x - north.x) * t;
+                    var x1r = north.x + (east.x - north.x) * t;
+                    ctx.beginPath();
+                    ctx.moveTo(x1l, y1);
+                    ctx.lineTo(x1r, y1);
+                    ctx.stroke();
+                }
                 ctx.lineWidth = 1;
+
+                // Door on south (left) wall
+                var doorMidX = (west.x + southR.x) / 2;
+                var doorMidY = (west.y + southR.y) / 2;
+                ctx.fillStyle = SB.Colors.shelter_door;
+                ctx.fillRect(doorMidX - 3, doorMidY + wallH - 12, 6, 10);
+                ctx.fillStyle = SB.Colors.shelter_wall;
+                ctx.fillRect(doorMidX + 2, doorMidY + wallH - 6, 1.5, 1.5);
+
+                // Windows on south wall
+                ctx.fillStyle = SB.Colors.shelter_window;
+                var winOff = (southR.x - west.x) * 0.2;
+                ctx.fillRect(west.x + winOff - 2, west.y + wallH - 10, 5, 4);
+                ctx.fillRect(southR.x - winOff - 3, southR.y + wallH - 10, 5, 4);
+
+                // Windows on east wall
+                var ewinMidX = (southR.x + east.x) / 2;
+                var ewinMidY = (southR.y + east.y) / 2;
+                ctx.fillStyle = SB.Colors.shelter_window;
+                ctx.fillRect(ewinMidX - 2, ewinMidY + wallH - 10, 5, 4);
                 break;
             }
             case SB.BuildingTypes.FARM: {
+                // Farm is flat — fence posts and rails only
+                var north = { x: (bx - by) * hw, y: (bx + by) * hh - hh };
+                var east = { x: (bx + bw - 1 - by) * hw + hw, y: (bx + bw - 1 + by) * hh };
+                var south = { x: (bx + bw - 1 - by - bh + 1) * hw, y: (bx + bw - 1 + by + bh - 1) * hh + hh };
+                var west = { x: (bx - by - bh + 1) * hw - hw, y: (bx + by + bh - 1) * hh };
+
+                // Fence rails
                 ctx.strokeStyle = SB.Colors.shelter_wall;
                 ctx.lineWidth = 1.5;
-                ctx.strokeRect(px + 1, py + 1, w - 2, h - 2);
+                ctx.beginPath();
+                ctx.moveTo(north.x, north.y);
+                ctx.lineTo(east.x, east.y);
+                ctx.lineTo(south.x, south.y);
+                ctx.lineTo(west.x, west.y);
+                ctx.closePath();
+                ctx.stroke();
+                ctx.lineWidth = 1;
 
-                var postPositions = [
-                    [px + 1, py + 1], [px + w - 2, py + 1],
-                    [px + 1, py + h - 2], [px + w - 2, py + h - 2],
-                ];
+                // Fence posts at corners
+                var posts = [north, east, south, west];
                 ctx.fillStyle = SB.Colors.shelter_wall;
-                for (var fp = 0; fp < postPositions.length; fp++) {
-                    ctx.fillRect(postPositions[fp][0] - 1, postPositions[fp][1] - 1, 3, 3);
+                for (var pi = 0; pi < posts.length; pi++) {
+                    ctx.fillRect(posts[pi].x - 1.5, posts[pi].y - 5, 3, 7);
                 }
 
-                for (var fdy = 0; fdy < building.height; fdy++) {
-                    for (var fdx = 0; fdx < building.width; fdx++) {
-                        var ftile = SB.World.tiles[building.y + fdy] ? SB.World.tiles[building.y + fdy][building.x + fdx] : null;
+                // Draw crops on farmland tiles
+                for (var fdy = 0; fdy < bh; fdy++) {
+                    for (var fdx = 0; fdx < bw; fdx++) {
+                        var ftile = SB.World.tiles[by + fdy] ? SB.World.tiles[by + fdy][bx + fdx] : null;
                         if (!ftile || ftile.type !== SB.Tiles.FARMLAND) continue;
 
-                        var cropX = (building.x + fdx) * ts;
-                        var cropY = (building.y + fdy) * ts;
-
+                        var fpos = this.tileToScreen(bx + fdx, by + fdy);
                         if (ftile.growthTimer <= 0) {
-                            for (var fc = 0; fc < 3; fc++) {
-                                var fsx = cropX + 4 + fc * 7;
+                            // Mature crops
+                            for (var fc = -1; fc <= 1; fc++) {
+                                var cpx = fpos.x + fc * 6;
+                                var cpy = fpos.y;
                                 ctx.fillStyle = SB.Colors.farm_crop;
-                                ctx.fillRect(fsx, cropY + 5, 2, ts - 8);
-                                ctx.fillStyle = SB.Colors.farm_crop_dark;
-                                ctx.fillRect(fsx - 2, cropY + 10, 3, 2);
-                                ctx.fillRect(fsx + 2, cropY + 14, 3, 2);
+                                ctx.fillRect(cpx, cpy - 6, 2, 8);
                                 ctx.fillStyle = SB.Colors.farm_crop_grain;
                                 ctx.beginPath();
-                                ctx.arc(fsx + 1, cropY + 4, 3, 0, Math.PI * 2);
+                                ctx.arc(cpx + 1, cpy - 7, 2.5, 0, Math.PI * 2);
                                 ctx.fill();
                             }
                         } else {
+                            // Growing sprouts
                             var growth = 1 - (ftile.growthTimer / 50);
                             ctx.fillStyle = SB.Colors.farm_crop_young;
-                            for (var gc = 0; gc < 3; gc++) {
-                                var gsx = cropX + 4 + gc * 7;
-                                var sproutH = Math.max(2, growth * (ts - 8));
-                                ctx.fillRect(gsx, cropY + ts - 3 - sproutH, 2, sproutH);
-                                if (growth > 0.4) {
-                                    ctx.fillRect(gsx - 1, cropY + ts - 3 - sproutH * 0.5, 2, 1);
-                                }
+                            for (var gc = -1; gc <= 1; gc++) {
+                                var gpx = fpos.x + gc * 6;
+                                var sproutH = Math.max(2, growth * 8);
+                                ctx.fillRect(gpx, fpos.y - sproutH, 2, sproutH);
                             }
                         }
                     }
                 }
-                ctx.lineWidth = 1;
                 break;
             }
             case SB.BuildingTypes.STORAGE: {
-                // Wooden crate with roof
-                ctx.fillStyle = 'rgba(0,0,0,0.2)';
-                ctx.fillRect(px + 3, py + h - 2, w - 4, 4);
-
-                // Main crate body
-                ctx.fillStyle = SB.Colors.storage_wood;
-                ctx.fillRect(px + 3, py + 6, w - 6, h - 8);
-
-                // Crate slats (horizontal)
-                ctx.fillStyle = SB.Colors.storage_wood_dark;
-                ctx.fillRect(px + 3, py + 10, w - 6, 1);
-                ctx.fillRect(px + 3, py + 16, w - 6, 1);
-                ctx.fillRect(px + 3, py + 22, w - 6, 1);
-                // Vertical divider
-                ctx.fillRect(px + w / 2 - 1, py + 6, 2, h - 8);
-
-                // Roof
-                ctx.fillStyle = SB.Colors.storage_roof;
-                ctx.beginPath();
-                ctx.moveTo(px, py + 6);
-                ctx.lineTo(px + w / 2, py);
-                ctx.lineTo(px + w, py + 6);
-                ctx.closePath();
-                ctx.fill();
-                ctx.fillStyle = SB.Colors.storage_wood_dark;
-                ctx.beginPath();
-                ctx.moveTo(px + w / 2, py);
-                ctx.lineTo(px + w, py + 6);
-                ctx.lineTo(px + w / 2, py + 4);
-                ctx.closePath();
-                ctx.fill();
-
-                // Highlight
-                ctx.fillStyle = 'rgba(255,255,255,0.06)';
-                ctx.fillRect(px + 4, py + 7, w / 2 - 5, h - 10);
-                break;
-            }
-            case SB.BuildingTypes.WELL: {
-                // Circular stone well
-                var wcx = px + w / 2;
-                var wcy = py + h / 2 + 2;
-
+                var wallH = 14;
                 // Shadow
                 ctx.fillStyle = 'rgba(0,0,0,0.2)';
                 ctx.beginPath();
-                ctx.ellipse(wcx + 1, wcy + 6, 10, 5, 0, 0, Math.PI * 2);
+                ctx.ellipse(center.x + 2, center.y + hh + 5, hw * 0.8, hh * 0.5, 0, 0, Math.PI * 2);
                 ctx.fill();
 
-                // Stone ring (outer)
+                this._drawIsoBox(ctx, bx, by, bw, bh, wallH,
+                    SB.Colors.storage_roof, SB.Colors.storage_wood, SB.Colors.storage_wood_dark);
+
+                // Crate slat lines on left wall
+                var west = { x: (bx - by - bh + 1) * hw - hw, y: (bx + by + bh - 1) * hh };
+                var southV = { x: (bx + bw - 1 - by - bh + 1) * hw, y: (bx + bw - 1 + by + bh - 1) * hh + hh };
+                ctx.strokeStyle = SB.Colors.storage_wood_dark;
+                ctx.lineWidth = 0.5;
+                for (var si = 1; si <= 2; si++) {
+                    var sly = west.y + (si / 3) * wallH - wallH;
+                    ctx.beginPath();
+                    ctx.moveTo(west.x, sly + wallH * 0.3);
+                    ctx.lineTo(southV.x, sly + (southV.y - west.y) / wallH * (si / 3) * wallH + wallH * 0.3);
+                    ctx.stroke();
+                }
+                ctx.lineWidth = 1;
+                break;
+            }
+            case SB.BuildingTypes.WELL: {
+                // Draw as a circular stone structure at ground level
+                // Shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                ctx.beginPath();
+                ctx.ellipse(center.x + 2, center.y + 5, 10, 4, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Stone ring outer
                 ctx.fillStyle = SB.Colors.well_stone;
                 ctx.beginPath();
-                ctx.ellipse(wcx, wcy, 10, 8, 0, 0, Math.PI * 2);
+                ctx.ellipse(center.x, center.y - 2, 10, 7, 0, 0, Math.PI * 2);
                 ctx.fill();
 
                 // Inner water
                 ctx.fillStyle = SB.Colors.well_water;
                 ctx.beginPath();
-                ctx.ellipse(wcx, wcy, 6, 5, 0, 0, Math.PI * 2);
+                ctx.ellipse(center.x, center.y - 2, 6, 4.5, 0, 0, Math.PI * 2);
                 ctx.fill();
 
                 // Water shimmer
                 var wt = this.animFrame * 0.04;
                 ctx.fillStyle = 'rgba(100,180,255,0.3)';
                 ctx.beginPath();
-                ctx.ellipse(wcx - 1, wcy - 1 + Math.sin(wt) * 0.5, 3, 2, 0, 0, Math.PI * 2);
+                ctx.ellipse(center.x - 1, center.y - 3 + Math.sin(wt) * 0.5, 3, 1.5, 0, 0, Math.PI * 2);
                 ctx.fill();
 
-                // Stone detail
+                // Stone rim detail
                 ctx.fillStyle = SB.Colors.well_stone_dark;
-                ctx.fillRect(wcx - 9, wcy - 2, 2, 2);
-                ctx.fillRect(wcx + 7, wcy, 2, 2);
-                ctx.fillRect(wcx - 1, wcy - 7, 2, 2);
+                ctx.fillRect(center.x - 9, center.y - 3, 2, 2);
+                ctx.fillRect(center.x + 7, center.y - 1, 2, 2);
 
                 // Rope post
                 ctx.fillStyle = SB.Colors.storage_wood_dark;
-                ctx.fillRect(wcx + 8, wcy - 12, 2, 14);
-                // Crossbar
-                ctx.fillRect(wcx + 4, wcy - 12, 10, 2);
+                ctx.fillRect(center.x + 8, center.y - 16, 2, 16);
+                ctx.fillRect(center.x + 4, center.y - 16, 10, 2);
                 // Rope
                 ctx.strokeStyle = '#8a7a60';
                 ctx.lineWidth = 1;
                 ctx.beginPath();
-                ctx.moveTo(wcx + 9, wcy - 10);
-                ctx.lineTo(wcx + 9, wcy - 3);
+                ctx.moveTo(center.x + 9, center.y - 14);
+                ctx.lineTo(center.x + 9, center.y - 5);
                 ctx.stroke();
-                ctx.lineWidth = 1;
                 break;
             }
             case SB.BuildingTypes.WORKSHOP: {
-                // Larger building with workbench
+                var wallH = 20;
+                // Shadow
                 ctx.fillStyle = 'rgba(0,0,0,0.2)';
-                ctx.fillRect(px + 3, py + h - 2, w - 4, 4);
-
-                // Floor
-                ctx.fillStyle = SB.Colors.dirt;
-                ctx.fillRect(px + 2, py + 6, w - 4, h - 8);
-
-                // Walls
-                ctx.fillStyle = SB.Colors.workshop_wall;
-                ctx.fillRect(px + 2, py + 6, w - 4, 3);
-                ctx.fillRect(px + 2, py + h - 5, w - 4, 3);
-                ctx.fillRect(px + 2, py + 6, 3, h - 8);
-                ctx.fillRect(px + w - 5, py + 6, 3, h - 8);
-
-                // Roof
-                ctx.fillStyle = SB.Colors.workshop_roof;
                 ctx.beginPath();
-                ctx.moveTo(px, py + 6);
-                ctx.lineTo(px + w / 2, py - 2);
-                ctx.lineTo(px + w, py + 6);
-                ctx.closePath();
-                ctx.fill();
-                // Roof shading
-                ctx.fillStyle = SB.Colors.workshop_wall_dark;
-                ctx.beginPath();
-                ctx.moveTo(px + w / 2, py - 2);
-                ctx.lineTo(px + w, py + 6);
-                ctx.lineTo(px + w / 2, py + 3);
-                ctx.closePath();
+                ctx.ellipse(center.x + 2, center.y + hh + 6, bw * hw * 0.6, bh * hh * 0.35, 0, 0, Math.PI * 2);
                 ctx.fill();
 
-                // Workbench inside
-                ctx.fillStyle = SB.Colors.storage_wood;
-                ctx.fillRect(px + 8, py + 14, w - 20, 6);
-                ctx.fillStyle = SB.Colors.storage_wood_dark;
-                ctx.fillRect(px + 8, py + 18, 2, 6);
-                ctx.fillRect(px + w - 14, py + 18, 2, 6);
+                this._drawIsoBox(ctx, bx, by, bw, bh, wallH,
+                    SB.Colors.workshop_roof, SB.Colors.workshop_wall, SB.Colors.workshop_wall_dark);
 
-                // Anvil
-                ctx.fillStyle = '#555';
-                ctx.fillRect(px + w - 22, py + 16, 6, 2);
-                ctx.fillRect(px + w - 21, py + 14, 4, 2);
-                ctx.fillRect(px + w - 20, py + 18, 2, 4);
-
-                // Window
-                ctx.fillStyle = SB.Colors.shelter_window;
-                ctx.fillRect(px + 12, py + 8, 5, 4);
-                ctx.fillRect(px + w - 20, py + 8, 5, 4);
-
-                // Door
+                // Door on south wall
+                var west = { x: (bx - by - bh + 1) * hw - hw, y: (bx + by + bh - 1) * hh };
+                var southV = { x: (bx + bw - 1 - by - bh + 1) * hw, y: (bx + bw - 1 + by + bh - 1) * hh + hh };
+                var doorMidX = (west.x + southV.x) / 2;
+                var doorMidY = (west.y + southV.y) / 2;
                 ctx.fillStyle = SB.Colors.shelter_door;
-                ctx.fillRect(px + w / 2 - 4, py + h - 10, 8, 7);
+                ctx.fillRect(doorMidX - 3, doorMidY - 2, 6, 10);
+
+                // Windows
+                ctx.fillStyle = SB.Colors.shelter_window;
+                var winOff = (southV.x - west.x) * 0.2;
+                ctx.fillRect(west.x + winOff, west.y - 6, 5, 4);
+                ctx.fillRect(southV.x - winOff - 5, southV.y - 6, 5, 4);
+
+                // Anvil on east wall area
+                var east = { x: (bx + bw - 1 - by) * hw + hw, y: (bx + bw - 1 + by) * hh };
+                var anvX = (southV.x + east.x) / 2;
+                var anvY = (southV.y + east.y) / 2;
+                ctx.fillStyle = '#555';
+                ctx.fillRect(anvX - 3, anvY - 4, 6, 2);
+                ctx.fillRect(anvX - 2, anvY - 6, 4, 2);
                 break;
             }
-            case SB.BuildingTypes.WATCHTOWER: {
-                // Tall structure drawn to appear tall
-                var twcx = px + w / 2;
-
-                // Foundation shadow
-                ctx.fillStyle = 'rgba(0,0,0,0.25)';
-                ctx.fillRect(px + 2, py + h - 2, w - 4, 4);
-
-                // Support legs (4 posts)
-                ctx.fillStyle = SB.Colors.watchtower_wood;
-                ctx.fillRect(px + 4, py + 10, 3, h - 12);
-                ctx.fillRect(px + w - 7, py + 10, 3, h - 12);
-
-                // Cross bracing
-                ctx.strokeStyle = SB.Colors.watchtower_wood_dark;
-                ctx.lineWidth = 1.5;
+            case SB.BuildingTypes.CAMPFIRE: {
+                var pos = this.tileToScreen(bx, by);
+                // Logs
+                ctx.fillStyle = SB.Colors.campfire_log;
+                ctx.fillRect(pos.x - 6, pos.y + 1, 12, 3);
+                ctx.fillRect(pos.x - 4, pos.y - 1, 8, 3);
+                // Flames (animated)
+                var ft = this.animFrame * 0.12;
+                var flameH = 8 + Math.sin(ft) * 3;
+                var flameH2 = 6 + Math.sin(ft * 1.3 + 1) * 2;
+                ctx.fillStyle = SB.Colors.campfire_flame;
                 ctx.beginPath();
-                ctx.moveTo(px + 5, py + 14);
-                ctx.lineTo(px + w - 6, py + h - 8);
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.moveTo(px + w - 6, py + 14);
-                ctx.lineTo(px + 5, py + h - 8);
-                ctx.stroke();
-                ctx.lineWidth = 1;
-
-                // Platform
-                ctx.fillStyle = SB.Colors.watchtower_wood;
-                ctx.fillRect(px, py + 8, w, 4);
-                ctx.fillStyle = SB.Colors.watchtower_wood_dark;
-                ctx.fillRect(px, py + 11, w, 1);
-
-                // Railing
-                ctx.fillStyle = SB.Colors.watchtower_wood;
-                ctx.fillRect(px + 1, py + 2, 2, 7);
-                ctx.fillRect(px + w - 3, py + 2, 2, 7);
-                ctx.fillRect(px, py + 2, w, 2);
-
-                // Roof (pointed)
-                ctx.fillStyle = SB.Colors.shelter_roof;
-                ctx.beginPath();
-                ctx.moveTo(px - 1, py + 2);
-                ctx.lineTo(twcx, py - 6);
-                ctx.lineTo(px + w + 1, py + 2);
-                ctx.closePath();
+                ctx.moveTo(pos.x - 3, pos.y);
+                ctx.quadraticCurveTo(pos.x - 1, pos.y - flameH, pos.x + 1, pos.y);
                 ctx.fill();
-                ctx.fillStyle = SB.Colors.shelter_roof_dark;
+                ctx.fillStyle = SB.Colors.campfire_ember;
                 ctx.beginPath();
-                ctx.moveTo(twcx, py - 6);
-                ctx.lineTo(px + w + 1, py + 2);
-                ctx.lineTo(twcx, py);
-                ctx.closePath();
+                ctx.moveTo(pos.x + 1, pos.y + 1);
+                ctx.quadraticCurveTo(pos.x + 3, pos.y - flameH2, pos.x + 5, pos.y + 1);
                 ctx.fill();
-
-                // Flag
-                var flagWave = Math.sin(this.animFrame * 0.06) * 2;
-                ctx.fillStyle = '#cc3333';
+                // Glow
+                ctx.fillStyle = 'rgba(255, 150, 50, 0.08)';
                 ctx.beginPath();
-                ctx.moveTo(twcx, py - 6);
-                ctx.lineTo(twcx + 8, py - 10 + flagWave);
-                ctx.lineTo(twcx, py - 8);
-                ctx.closePath();
+                ctx.arc(pos.x, pos.y - 2, 15, 0, Math.PI * 2);
                 ctx.fill();
+                // Embers/sparks
+                ctx.fillStyle = SB.Colors.campfire_ember;
+                var spark1y = (ft * 3) % 12;
+                ctx.globalAlpha = Math.max(0, 1 - spark1y / 12);
+                ctx.fillRect(pos.x - 2 + Math.sin(ft * 2) * 3, pos.y - 4 - spark1y, 1.5, 1.5);
+                ctx.globalAlpha = 1;
+                break;
+            }
+            case SB.BuildingTypes.WORKBENCH: {
+                var pos = this.tileToScreen(bx, by);
+                // Shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.15)';
+                ctx.beginPath();
+                ctx.ellipse(pos.x + 1, pos.y + 5, 10, 4, 0, 0, Math.PI * 2);
+                ctx.fill();
+                // Legs
+                ctx.fillStyle = SB.Colors.workbench_leg;
+                ctx.fillRect(pos.x - 8, pos.y - 2, 2, 8);
+                ctx.fillRect(pos.x + 6, pos.y - 2, 2, 8);
+                // Table top
+                ctx.fillStyle = SB.Colors.workbench_top;
+                ctx.fillRect(pos.x - 10, pos.y - 5, 20, 5);
+                ctx.fillStyle = SB.Colors.workbench_top_dark;
+                ctx.fillRect(pos.x - 9, pos.y - 4, 18, 1);
+                // Tool on top
+                ctx.fillStyle = '#888';
+                ctx.fillRect(pos.x - 4, pos.y - 7, 2, 5);
+                ctx.fillStyle = '#aaa';
+                ctx.fillRect(pos.x - 6, pos.y - 8, 6, 2);
+                break;
+            }
+            case SB.BuildingTypes.BED: {
+                var pos = this.tileToScreen(bx, by);
+                // Shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.12)';
+                ctx.beginPath();
+                ctx.ellipse(pos.x, pos.y + 4, 10, 3, 0, 0, Math.PI * 2);
+                ctx.fill();
+                // Frame
+                ctx.fillStyle = SB.Colors.bed_frame;
+                ctx.fillRect(pos.x - 9, pos.y - 3, 18, 3);
+                ctx.fillRect(pos.x - 9, pos.y - 3, 2, 6);
+                ctx.fillRect(pos.x + 7, pos.y - 3, 2, 6);
+                // Sheet
+                ctx.fillStyle = SB.Colors.bed_sheet;
+                ctx.fillRect(pos.x - 7, pos.y - 5, 14, 3);
+                // Pillow
+                ctx.fillStyle = SB.Colors.bed_pillow;
+                ctx.fillRect(pos.x - 7, pos.y - 6, 5, 3);
+                break;
+            }
+            case SB.BuildingTypes.FURNACE: {
+                var pos = this.tileToScreen(bx, by);
+                // Shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.18)';
+                ctx.beginPath();
+                ctx.ellipse(pos.x + 1, pos.y + 5, 9, 3, 0, 0, Math.PI * 2);
+                ctx.fill();
+                // Stone body
+                ctx.fillStyle = SB.Colors.furnace_stone;
+                ctx.fillRect(pos.x - 8, pos.y - 8, 16, 14);
+                ctx.fillStyle = SB.Colors.furnace_dark;
+                ctx.fillRect(pos.x - 7, pos.y - 7, 14, 2);
+                // Opening
+                ctx.fillStyle = '#222';
+                ctx.fillRect(pos.x - 4, pos.y - 2, 8, 5);
+                // Fire inside (animated)
+                var ff = this.animFrame * 0.1;
+                ctx.fillStyle = SB.Colors.furnace_opening;
+                ctx.globalAlpha = 0.6 + Math.sin(ff) * 0.3;
+                ctx.fillRect(pos.x - 3, pos.y - 1, 6, 3);
+                ctx.globalAlpha = 1;
+                // Chimney smoke
+                ctx.fillStyle = 'rgba(100,100,110,0.3)';
+                var smokeY = (this.animFrame * 0.5) % 15;
+                ctx.beginPath();
+                ctx.arc(pos.x + 2, pos.y - 10 - smokeY, 3 + smokeY * 0.2, 0, Math.PI * 2);
+                ctx.fill();
+                break;
+            }
+            case SB.BuildingTypes.SMOKEHOUSE: {
+                var wallH = 16;
+                // Shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                ctx.beginPath();
+                ctx.ellipse(center.x + 2, center.y + hh + 5, hw * 0.8, hh * 0.4, 0, 0, Math.PI * 2);
+                ctx.fill();
+                this._drawIsoBox(ctx, bx, by, bw, bh, wallH,
+                    SB.Colors.smokehouse_wall, SB.Colors.storage_wood, SB.Colors.storage_wood_dark);
+                // Chimney
+                ctx.fillStyle = SB.Colors.smokehouse_chimney;
+                var chimX = center.x + 4;
+                ctx.fillRect(chimX - 2, center.y - wallH - 10, 5, 12);
+                // Smoke (animated)
+                ctx.fillStyle = 'rgba(120,120,130,0.25)';
+                for (var si = 0; si < 3; si++) {
+                    var sft = this.animFrame * 0.04 + si * 2;
+                    var smokeRise = (sft * 5) % 20;
+                    var smokeAlpha = Math.max(0, 0.25 - smokeRise * 0.012);
+                    ctx.globalAlpha = smokeAlpha;
+                    ctx.beginPath();
+                    ctx.arc(chimX + Math.sin(sft + si) * 3, center.y - wallH - 12 - smokeRise, 3 + smokeRise * 0.15, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.globalAlpha = 1;
                 break;
             }
             case SB.BuildingTypes.WALL: {
-                // Stone block segment
-                ctx.fillStyle = SB.Colors.wall_stone;
-                ctx.fillRect(px + 1, py + 1, ts - 2, ts - 2);
+                var wallH = 12;
+                this._drawIsoBox(ctx, bx, by, 1, 1, wallH,
+                    SB.Colors.wall_stone_light, SB.Colors.wall_stone, SB.Colors.wall_stone_dark);
 
-                // Top highlight
-                ctx.fillStyle = SB.Colors.wall_stone_light;
-                ctx.fillRect(px + 1, py + 1, ts - 2, 3);
-
-                // Shadow on right and bottom
-                ctx.fillStyle = SB.Colors.wall_stone_dark;
-                ctx.fillRect(px + ts - 4, py + 1, 3, ts - 2);
-                ctx.fillRect(px + 1, py + ts - 4, ts - 2, 3);
-
-                // Mortar lines
+                // Mortar lines on top face
+                var pos = this.tileToScreen(bx, by);
                 ctx.strokeStyle = '#444455';
                 ctx.lineWidth = 0.5;
-                ctx.strokeRect(px + 2, py + 2, ts - 4, ts - 4);
-                // Horizontal mortar
                 ctx.beginPath();
-                ctx.moveTo(px + 2, py + ts / 2);
-                ctx.lineTo(px + ts - 2, py + ts / 2);
-                ctx.stroke();
-                // Vertical mortar (offset on rows)
-                ctx.beginPath();
-                ctx.moveTo(px + ts / 2, py + 2);
-                ctx.lineTo(px + ts / 2, py + ts / 2);
+                ctx.moveTo(pos.x - 8, pos.y - wallH);
+                ctx.lineTo(pos.x + 8, pos.y - wallH);
                 ctx.stroke();
                 ctx.beginPath();
-                ctx.moveTo(px + ts / 3, py + ts / 2);
-                ctx.lineTo(px + ts / 3, py + ts - 2);
+                ctx.moveTo(pos.x, pos.y - wallH - 4);
+                ctx.lineTo(pos.x, pos.y - wallH + 4);
                 ctx.stroke();
                 ctx.lineWidth = 1;
                 break;
@@ -1002,178 +1408,185 @@ SB.Renderer = {
         }
     },
 
-    _drawAgent: function(ctx, agent, ts) {
-        var px = agent.x * ts + ts / 2;
-        var py = agent.y * ts;
+    // ═══════════════════════════════════════════
+    // AGENT
+    // ═══════════════════════════════════════════
+
+    _drawAgent: function(ctx, agent, sx, sy) {
         var walking = agent.status && agent.status.indexOf('Walk') >= 0;
         var legAnim = walking ? Math.sin(agent.walkFrame * 0.8) : 0;
 
+        // Shadow
         ctx.fillStyle = 'rgba(0,0,0,0.22)';
         ctx.beginPath();
-        ctx.ellipse(px, py + ts - 1, 7, 2.5, 0, 0, Math.PI * 2);
+        ctx.ellipse(sx + 1, sy + 5, 7, 2.5, 0, 0, Math.PI * 2);
         ctx.fill();
 
         if (agent.isSleeping) {
-            var ly = py + ts - 8;
-
+            var ly = sy - 2;
             ctx.fillStyle = '#5577bb';
             ctx.beginPath();
-            ctx.roundRect(px - 10, ly - 2, 20, 7, 3);
+            ctx.roundRect(sx - 10, ly - 2, 20, 7, 3);
             ctx.fill();
-
             ctx.fillStyle = '#4466aa';
             ctx.beginPath();
-            ctx.roundRect(px - 8, ly - 1, 16, 5, 2);
+            ctx.roundRect(sx - 8, ly - 1, 16, 5, 2);
             ctx.fill();
-
             ctx.fillStyle = SB.Colors.agent_skin;
             ctx.beginPath();
-            ctx.arc(px - 9, ly - 1, 5, 0, Math.PI * 2);
+            ctx.arc(sx - 9, ly - 1, 5, 0, Math.PI * 2);
             ctx.fill();
             ctx.fillStyle = '#ddd';
             ctx.beginPath();
-            ctx.ellipse(px - 9, ly + 2, 5, 2.5, 0, 0, Math.PI * 2);
+            ctx.ellipse(sx - 9, ly + 2, 5, 2.5, 0, 0, Math.PI * 2);
             ctx.fill();
             ctx.strokeStyle = SB.Colors.agent_eye;
             ctx.lineWidth = 0.8;
             ctx.beginPath();
-            ctx.moveTo(px - 11, ly - 2);
-            ctx.lineTo(px - 8, ly - 2);
+            ctx.moveTo(sx - 11, ly - 2);
+            ctx.lineTo(sx - 8, ly - 2);
             ctx.stroke();
             ctx.lineWidth = 1;
 
+            // Zzz
             ctx.fillStyle = '#aaccff';
             var zt = this.animFrame * 0.06;
             var z1y = Math.sin(zt) * 3;
             ctx.globalAlpha = 0.8;
             ctx.font = 'bold 10px monospace';
-            ctx.fillText('z', px, ly - 12 + z1y);
+            ctx.fillText('z', sx, ly - 12 + z1y);
             ctx.font = '7px monospace';
             ctx.globalAlpha = 0.5;
-            ctx.fillText('z', px + 6, ly - 19 + z1y * 0.7);
+            ctx.fillText('z', sx + 6, ly - 19 + z1y * 0.7);
             ctx.globalAlpha = 1;
         } else {
-            var bodyTop = py + 4;
+            var bodyTop = sy - 16;
 
+            // Legs
             ctx.fillStyle = '#4a6a9a';
-            var legW = 2.5;
-            var legH = 7;
             var legSpread = walking ? legAnim * 3 : 0;
-            ctx.fillRect(px - 3.5, bodyTop + 12, legW, legH + legSpread);
-            ctx.fillRect(px + 1, bodyTop + 12, legW, legH - legSpread);
+            ctx.fillRect(sx - 3.5, bodyTop + 12, 2.5, 7 + legSpread);
+            ctx.fillRect(sx + 1, bodyTop + 12, 2.5, 7 - legSpread);
+            // Boots
             ctx.fillStyle = '#5a3a20';
-            ctx.fillRect(px - 4, bodyTop + 18 + Math.max(0, legSpread), 3.5, 2);
-            ctx.fillRect(px + 0.5, bodyTop + 18 + Math.max(0, -legSpread), 3.5, 2);
+            ctx.fillRect(sx - 4, bodyTop + 18 + Math.max(0, legSpread), 3.5, 2);
+            ctx.fillRect(sx + 0.5, bodyTop + 18 + Math.max(0, -legSpread), 3.5, 2);
 
+            // Torso
             ctx.fillStyle = '#dd6644';
             ctx.beginPath();
-            ctx.roundRect(px - 5, bodyTop + 5, 10, 9, 2);
+            ctx.roundRect(sx - 5, bodyTop + 5, 10, 9, 2);
             ctx.fill();
             ctx.fillStyle = '#cc5533';
-            ctx.fillRect(px - 2, bodyTop + 5, 4, 2);
+            ctx.fillRect(sx - 2, bodyTop + 5, 4, 2);
 
+            // Arms
             ctx.fillStyle = SB.Colors.agent_skin;
             var armSwing = walking ? legAnim * 2.5 : 0;
-            ctx.fillRect(px - 7, bodyTop + 6 - armSwing, 2.5, 8);
-            ctx.fillRect(px + 4.5, bodyTop + 6 + armSwing, 2.5, 8);
+            ctx.fillRect(sx - 7, bodyTop + 6 - armSwing, 2.5, 8);
+            ctx.fillRect(sx + 4.5, bodyTop + 6 + armSwing, 2.5, 8);
 
+            // Tool in hand
             if (agent.status) {
                 if (agent.status.indexOf('Chop') >= 0) {
                     ctx.fillStyle = '#8B4513';
-                    ctx.fillRect(px + 6, bodyTop + 3 + armSwing, 2, 10);
+                    ctx.fillRect(sx + 6, bodyTop + 3 + armSwing, 2, 10);
                     ctx.fillStyle = '#aaa';
-                    ctx.fillRect(px + 5, bodyTop + 2 + armSwing, 4, 3);
+                    ctx.fillRect(sx + 5, bodyTop + 2 + armSwing, 4, 3);
                 } else if (agent.status.indexOf('Mining') >= 0) {
                     ctx.fillStyle = '#8B4513';
-                    ctx.fillRect(px + 6, bodyTop + 3 + armSwing, 2, 10);
+                    ctx.fillRect(sx + 6, bodyTop + 3 + armSwing, 2, 10);
                     ctx.fillStyle = '#999';
-                    ctx.fillRect(px + 4, bodyTop + 2 + armSwing, 6, 2);
+                    ctx.fillRect(sx + 4, bodyTop + 2 + armSwing, 6, 2);
                 } else if (agent.status.indexOf('Build') >= 0) {
                     ctx.fillStyle = '#8B4513';
-                    ctx.fillRect(px + 6, bodyTop + 4 + armSwing, 2, 8);
+                    ctx.fillRect(sx + 6, bodyTop + 4 + armSwing, 2, 8);
                     ctx.fillStyle = '#888';
-                    ctx.fillRect(px + 5, bodyTop + 3 + armSwing, 4, 3);
+                    ctx.fillRect(sx + 5, bodyTop + 3 + armSwing, 4, 3);
                 }
             }
 
+            // Head
             ctx.fillStyle = SB.Colors.agent_skin;
             ctx.beginPath();
-            ctx.arc(px, bodyTop + 1, 6, 0, Math.PI * 2);
+            ctx.arc(sx, bodyTop + 1, 6, 0, Math.PI * 2);
             ctx.fill();
 
+            // Hair
             ctx.fillStyle = SB.Colors.agent_hair;
             ctx.beginPath();
-            ctx.arc(px, bodyTop - 2, 6, Math.PI, Math.PI * 2);
+            ctx.arc(sx, bodyTop - 2, 6, Math.PI, Math.PI * 2);
             ctx.fill();
-            ctx.fillRect(px - 6, bodyTop - 2, 2, 4);
-            ctx.fillRect(px + 4, bodyTop - 2, 2, 4);
+            ctx.fillRect(sx - 6, bodyTop - 2, 2, 4);
+            ctx.fillRect(sx + 4, bodyTop - 2, 2, 4);
 
+            // Face
             var blink = Math.sin(this.animFrame * 0.05) > 0.95;
-
             if (agent.facing === 'up') {
-                // Back of head
+                // Back of head - no face
             } else if (agent.facing === 'left') {
                 if (!blink) {
                     ctx.fillStyle = SB.Colors.agent_eye;
                     ctx.beginPath();
-                    ctx.arc(px - 3, bodyTop, 1.3, 0, Math.PI * 2);
+                    ctx.arc(sx - 3, bodyTop, 1.3, 0, Math.PI * 2);
                     ctx.fill();
                     ctx.fillStyle = '#fff';
-                    ctx.fillRect(px - 3.5, bodyTop - 0.8, 0.8, 0.8);
+                    ctx.fillRect(sx - 3.5, bodyTop - 0.8, 0.8, 0.8);
                 }
             } else if (agent.facing === 'right') {
                 if (!blink) {
                     ctx.fillStyle = SB.Colors.agent_eye;
                     ctx.beginPath();
-                    ctx.arc(px + 3, bodyTop, 1.3, 0, Math.PI * 2);
+                    ctx.arc(sx + 3, bodyTop, 1.3, 0, Math.PI * 2);
                     ctx.fill();
                     ctx.fillStyle = '#fff';
-                    ctx.fillRect(px + 2.5, bodyTop - 0.8, 0.8, 0.8);
+                    ctx.fillRect(sx + 2.5, bodyTop - 0.8, 0.8, 0.8);
                 }
             } else {
                 if (blink) {
                     ctx.fillStyle = SB.Colors.agent_eye;
-                    ctx.fillRect(px - 4, bodyTop, 2.5, 0.8);
-                    ctx.fillRect(px + 1.5, bodyTop, 2.5, 0.8);
+                    ctx.fillRect(sx - 4, bodyTop, 2.5, 0.8);
+                    ctx.fillRect(sx + 1.5, bodyTop, 2.5, 0.8);
                 } else {
                     ctx.fillStyle = SB.Colors.agent_eye;
                     ctx.beginPath();
-                    ctx.arc(px - 2.5, bodyTop, 1.3, 0, Math.PI * 2);
-                    ctx.arc(px + 2.5, bodyTop, 1.3, 0, Math.PI * 2);
+                    ctx.arc(sx - 2.5, bodyTop, 1.3, 0, Math.PI * 2);
+                    ctx.arc(sx + 2.5, bodyTop, 1.3, 0, Math.PI * 2);
                     ctx.fill();
                     ctx.fillStyle = '#fff';
-                    ctx.fillRect(px - 3, bodyTop - 0.8, 0.8, 0.8);
-                    ctx.fillRect(px + 2, bodyTop - 0.8, 0.8, 0.8);
+                    ctx.fillRect(sx - 3, bodyTop - 0.8, 0.8, 0.8);
+                    ctx.fillRect(sx + 2, bodyTop - 0.8, 0.8, 0.8);
                 }
                 ctx.strokeStyle = SB.Colors.agent_eye;
                 ctx.lineWidth = 0.7;
                 ctx.beginPath();
-                ctx.arc(px, bodyTop + 3, 1.5, 0.2, Math.PI - 0.2);
+                ctx.arc(sx, bodyTop + 3, 1.5, 0.2, Math.PI - 0.2);
                 ctx.stroke();
                 ctx.lineWidth = 1;
             }
         }
 
+        // Action bubble
         if (agent.status && !agent.isSleeping) {
             var bob = Math.sin(this.animFrame * 0.08) * 2;
-            var bubbleY = py - 4 + bob;
+            var bubbleY = sy - 24 + bob;
 
             ctx.fillStyle = 'rgba(255,255,255,0.5)';
             ctx.beginPath();
-            ctx.arc(px + 3, bubbleY + 6, 1.5, 0, Math.PI * 2);
+            ctx.arc(sx + 3, bubbleY + 6, 1.5, 0, Math.PI * 2);
             ctx.fill();
             ctx.beginPath();
-            ctx.arc(px + 5, bubbleY + 2, 2, 0, Math.PI * 2);
+            ctx.arc(sx + 5, bubbleY + 2, 2, 0, Math.PI * 2);
             ctx.fill();
 
             ctx.fillStyle = 'rgba(255,255,255,0.85)';
             ctx.beginPath();
-            ctx.roundRect(px + 2, bubbleY - 12, 18, 14, 5);
+            ctx.roundRect(sx + 2, bubbleY - 12, 18, 14, 5);
             ctx.fill();
 
             ctx.font = '10px sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText(this._getActionIcon(agent.status), px + 11, bubbleY - 1);
+            ctx.fillText(this._getActionIcon(agent.status), sx + 11, bubbleY - 1);
         }
     },
 
@@ -1183,6 +1596,10 @@ SB.Renderer = {
         if (status.indexOf('berries') >= 0 || status.indexOf('Gather') >= 0) return '\uD83E\uDED0';
         if (status.indexOf('Eat') >= 0) return '\uD83C\uDF56';
         if (status.indexOf('Sleep') >= 0) return '\uD83D\uDCA4';
+        if (status.indexOf('Fiber') >= 0 || status.indexOf('fiber') >= 0) return '\uD83C\uDF3F';
+        if (status.indexOf('Craft') >= 0) return '\uD83D\uDD27';
+        if (status.indexOf('campfire') >= 0 || status.indexOf('Campfire') >= 0) return '\uD83D\uDD25';
+        if (status.indexOf('furnace') >= 0 || status.indexOf('Furnace') >= 0) return '\u2668\uFE0F';
         if (status.indexOf('Build') >= 0) return '\uD83D\uDD28';
         if (status.indexOf('Harvest') >= 0) return '\uD83C\uDF3E';
         if (status.indexOf('Walk') >= 0) return '\uD83D\uDEB6';
@@ -1191,102 +1608,79 @@ SB.Renderer = {
         return '\uD83D\uDCAD';
     },
 
-    _drawDayNight: function(ctx, world, agent, time, ts) {
+    // ═══════════════════════════════════════════
+    // DAY/NIGHT
+    // ═══════════════════════════════════════════
+
+    _drawDayNight: function(ctx, world, agent, time, range) {
         if (time.darkness <= 0.02) return;
 
-        // Draw darkness per-tile, skipping VOID tiles so stars show through
-        var zoom = this.camera.zoom;
-        var camX = this.camera.x - (this.viewportW / 2) / zoom;
-        var camY = this.camera.y - (this.viewportH / 2) / zoom;
-        var minTX = Math.max(0, Math.floor(camX / ts) - 1);
-        var minTY = Math.max(0, Math.floor(camY / ts) - 1);
-        var maxTX = Math.min(SB.WORLD_WIDTH - 1, Math.ceil((camX + this.viewportW / zoom) / ts) + 1);
-        var maxTY = Math.min(SB.WORLD_HEIGHT - 1, Math.ceil((camY + this.viewportH / zoom) / ts) + 1);
+        var overlayColor = SB.Colors.night_overlay + time.darkness + ')';
 
-        ctx.fillStyle = SB.Colors.night_overlay + time.darkness + ')';
-        for (var y = minTY; y <= maxTY; y++) {
-            for (var x = minTX; x <= maxTX; x++) {
+        for (var y = range.minTY; y <= range.maxTY; y++) {
+            for (var x = range.minTX; x <= range.maxTX; x++) {
                 var tile = world.tiles[y][x];
                 if (tile.type === SB.Tiles.VOID) continue;
-                ctx.fillRect(x * ts, y * ts, ts, ts);
+                var pos = this.tileToScreen(x, y);
+                this._fillDiamond(ctx, pos.x, pos.y, overlayColor);
             }
         }
 
-        // Firelight glow near shelter
+        // Firelight near shelter
         var shelter = world.getBuilding(SB.BuildingTypes.SHELTER);
         if (shelter && time.darkness > 0.1) {
-            var sx = (shelter.x + shelter.width / 2) * ts;
-            var sy = (shelter.y + shelter.height / 2) * ts;
+            var spos = this.tileToScreen(
+                shelter.x + shelter.width / 2,
+                shelter.y + shelter.height / 2
+            );
             var flicker = 1 + Math.sin(this.animFrame * 0.15) * 0.1;
-            var glowRadius = ts * 5 * flicker;
-            var gradient = ctx.createRadialGradient(sx, sy, 5, sx, sy, glowRadius);
+            var glowRadius = 60 * flicker;
+            var gradient = ctx.createRadialGradient(spos.x, spos.y, 5, spos.x, spos.y, glowRadius);
             var glowAlpha = Math.min(time.darkness * 0.9, 0.35);
             gradient.addColorStop(0, SB.Colors.firelight + glowAlpha + ')');
             gradient.addColorStop(0.4, SB.Colors.firelight + (glowAlpha * 0.4) + ')');
             gradient.addColorStop(1, SB.Colors.firelight + '0)');
             ctx.fillStyle = gradient;
             ctx.beginPath();
-            ctx.arc(sx, sy, glowRadius, 0, Math.PI * 2);
+            ctx.arc(spos.x, spos.y, glowRadius, 0, Math.PI * 2);
             ctx.fill();
         }
 
-        // Agent personal glow
+        // Agent glow
         if (agent.alive && time.darkness > 0.2) {
-            var ax = agent.x * ts + ts / 2;
-            var ay = agent.y * ts + ts / 2;
-            var agentGlow = ctx.createRadialGradient(ax, ay, 2, ax, ay, ts * 2.5);
+            var apos = this.tileToScreen(agent.x, agent.y);
+            var agentGlow = ctx.createRadialGradient(apos.x, apos.y, 2, apos.x, apos.y, 35);
             agentGlow.addColorStop(0, 'rgba(255, 220, 150, 0.12)');
             agentGlow.addColorStop(1, 'rgba(255, 220, 150, 0)');
             ctx.fillStyle = agentGlow;
             ctx.beginPath();
-            ctx.arc(ax, ay, ts * 2.5, 0, Math.PI * 2);
+            ctx.arc(apos.x, apos.y, 35, 0, Math.PI * 2);
             ctx.fill();
         }
     },
 
-    _drawFog: function(ctx, world, ts, minTX, minTY, maxTX, maxTY) {
-        for (var y = minTY; y <= maxTY; y++) {
-            for (var x = minTX; x <= maxTX; x++) {
-                var tile = world.tiles[y][x];
-                // Don't draw fog on void tiles - they show stars
-                if (tile.type === SB.Tiles.VOID) continue;
+    // ═══════════════════════════════════════════
+    // FOG OF WAR
+    // ═══════════════════════════════════════════
 
-                var fogAlpha = world.getFogAlpha(x, y);
-                if (fogAlpha <= 0) continue;
-
-                var fpx = x * ts;
-                var fpy = y * ts;
-
-                if (fogAlpha >= 0.95) {
-                    ctx.fillStyle = 'rgba(8, 8, 20, 0.97)';
-                    ctx.fillRect(fpx, fpy, ts, ts);
-                    var hash = (x * 7 + y * 13) % 20;
-                    if (hash < 3) {
-                        ctx.fillStyle = 'rgba(15, 15, 35, 0.4)';
-                        ctx.fillRect(fpx + 3, fpy + 5, ts - 6, ts - 10);
-                    }
-                } else {
-                    ctx.fillStyle = SB.Colors.fog_edge + Math.min(fogAlpha * 0.85, 0.7) + ')';
-                    ctx.fillRect(fpx, fpy, ts, ts);
-                }
-            }
-        }
+    _drawFog: function(ctx, world, range) {
+        // No fog — world is fully revealed
     },
 
-    _drawFogPulses: function(ctx, world, ts) {
+    _drawFogPulses: function(ctx, world) {
+        var hh = SB.ISO_TH / 2;
         for (var i = 0; i < world.fogPulses.length; i++) {
             var pulse = world.fogPulses[i];
-            var pcx = pulse.x * ts + ts / 2;
-            var pcy = pulse.y * ts + ts / 2;
-            var pr = pulse.radius * ts;
+            var ppos = this.tileToScreen(pulse.x, pulse.y);
+            var pr = pulse.radius * SB.ISO_TW * 0.5;
 
             ctx.beginPath();
-            ctx.arc(pcx, pcy, pr, 0, Math.PI * 2);
+            ctx.arc(ppos.x, ppos.y, pr, 0, Math.PI * 2);
             ctx.strokeStyle = SB.Colors.fog_pulse + (pulse.alpha * 0.6) + ')';
             ctx.lineWidth = 3;
             ctx.stroke();
 
-            var gradient = ctx.createRadialGradient(pcx, pcy, pr * 0.8, pcx, pcy, pr);
+            var gradient = ctx.createRadialGradient(ppos.x, ppos.y, pr * 0.8, ppos.x, ppos.y, pr);
             gradient.addColorStop(0, 'rgba(120, 180, 255, 0)');
             gradient.addColorStop(1, SB.Colors.fog_pulse + (pulse.alpha * 0.15) + ')');
             ctx.fillStyle = gradient;
@@ -1295,24 +1689,28 @@ SB.Renderer = {
         }
     },
 
+    // ═══════════════════════════════════════════
+    // HUD
+    // ═══════════════════════════════════════════
+
     _drawHUD: function(ctx, world, agent, time) {
         var hudLeft = this.viewportW;
         var hudX = hudLeft + 20;
         var hudW = this.hudWidth - 40;
         var hudRight = hudX + hudW;
 
-        // ── Background: dark wood/parchment feel ──
+        // Background
         ctx.fillStyle = '#1a1612';
         ctx.fillRect(hudLeft, 0, this.hudWidth, this.height);
 
-        // Subtle wood grain texture lines
+        // Wood grain texture
         ctx.fillStyle = 'rgba(60, 45, 30, 0.15)';
         for (var gi = 0; gi < 20; gi++) {
             var gy = gi * (this.height / 20) + ((gi * 37) % 15);
             ctx.fillRect(hudLeft, gy, this.hudWidth, 1);
         }
 
-        // Left border accent (earthy)
+        // Left border
         ctx.fillStyle = '#3a2a18';
         ctx.fillRect(hudLeft, 0, 3, this.height);
         ctx.fillStyle = 'rgba(120, 90, 50, 0.3)';
@@ -1321,12 +1719,28 @@ SB.Renderer = {
         var y = 32;
         ctx.textAlign = 'left';
 
-        // ── AGENT NAME ──
+        // Agent name
         ctx.fillStyle = '#e8d5a8';
         ctx.font = 'bold 20px monospace';
         ctx.fillText(agent.agentName || 'Agent', hudX, y);
 
-        // Day counter (right side)
+        // LLM badge
+        if (SB.LLM && SB.LLM.available) {
+            var nameWidth = ctx.measureText(agent.agentName || 'Agent').width;
+            var badgeX = hudX + nameWidth + 8;
+            if (SB.LLMPlanner && SB.LLMPlanner.isThinking) {
+                var pulse = 0.5 + 0.5 * Math.sin(performance.now() / 200);
+                ctx.fillStyle = 'rgba(120, 200, 255, ' + (0.4 + pulse * 0.4) + ')';
+                ctx.font = 'bold 9px monospace';
+                ctx.fillText('THINKING...', badgeX, y);
+            } else {
+                ctx.fillStyle = 'rgba(100, 220, 160, 0.7)';
+                ctx.font = 'bold 9px monospace';
+                ctx.fillText('AI', badgeX, y);
+            }
+        }
+
+        // Day counter
         ctx.fillStyle = '#8a7a60';
         ctx.font = '11px monospace';
         var timeIcon = time.isNight ? '\uD83C\uDF19' : '\u2600\uFE0F';
@@ -1347,7 +1761,7 @@ SB.Renderer = {
             y += 12;
         }
 
-        // Time progress bar
+        // Time bar
         this._drawFancyBar(ctx, hudX, y, hudW, 3, time.progress,
             time.isNight ? '#3a4a6a' : '#b8922a', '#0d0a06');
         y += 14;
@@ -1355,13 +1769,12 @@ SB.Renderer = {
         this._hudLine(ctx, hudX, y, hudW);
         y += 16;
 
-        // ── STATUS ──
+        // STATUS
         ctx.fillStyle = '#7a6a50';
         ctx.font = 'bold 10px monospace';
         ctx.fillText('STATUS', hudX, y);
         y += 14;
 
-        // Status dot + text
         var alive = agent.alive;
         ctx.fillStyle = alive ? '#6aaa55' : '#cc4444';
         ctx.beginPath();
@@ -1375,13 +1788,11 @@ SB.Renderer = {
         ctx.fillText(statusText, hudX + 14, y);
         y += 14;
 
-        // Goal + Mood
         ctx.fillStyle = '#a08850';
         ctx.font = '10px monospace';
         var goalStr = 'Goal: ' + (agent.currentGoal || 'Idle');
         ctx.fillText(goalStr, hudX + 14, y);
 
-        // Mood tag (right-aligned)
         if (agent.mood && SB.Moods && SB.Moods[agent.mood]) {
             var moodDef = SB.Moods[agent.mood];
             ctx.fillStyle = moodDef.color;
@@ -1400,13 +1811,12 @@ SB.Renderer = {
         this._hudLine(ctx, hudX, y, hudW);
         y += 16;
 
-        // ── VITALS ──
+        // VITALS
         ctx.fillStyle = '#7a6a50';
         ctx.font = 'bold 10px monospace';
         ctx.fillText('VITALS', hudX, y);
         y += 14;
 
-        // Hunger
         ctx.fillStyle = '#8a7a60';
         ctx.font = '10px monospace';
         ctx.fillText('Hunger', hudX, y);
@@ -1417,7 +1827,6 @@ SB.Renderer = {
         ctx.fillText(Math.round(agent.hunger), hudRight - 22, y);
         y += 18;
 
-        // Energy
         ctx.fillStyle = '#8a7a60';
         ctx.fillText('Energy', hudX, y);
         var eColor = agent.energy < 25 ? '#cc3333' : agent.energy < 50 ? '#88aa44' : '#55aa44';
@@ -1430,26 +1839,40 @@ SB.Renderer = {
         this._hudLine(ctx, hudX, y, hudW);
         y += 16;
 
-        // ── INVENTORY ──
+        // INVENTORY
         ctx.fillStyle = '#7a6a50';
         ctx.font = 'bold 10px monospace';
         ctx.fillText('INVENTORY', hudX, y);
         y += 16;
 
         ctx.font = '11px monospace';
-        var colW = Math.floor(hudW / 3);
-        // Wood
+        var colW = Math.floor(hudW / 2);
+        // Row 1
         ctx.fillStyle = '#aa9966';
         ctx.fillText('\uD83E\uDEB5 ' + agent.inventory.wood, hudX, y);
-        // Stone
         ctx.fillStyle = '#999999';
         ctx.fillText('\uD83E\uDEA8 ' + agent.inventory.stone, hudX + colW, y);
-        // Food
+        y += 16;
+        // Row 2
+        ctx.fillStyle = '#7aaa55';
+        ctx.fillText('\uD83C\uDF3F ' + agent.inventory.fiber, hudX, y);
         ctx.fillStyle = '#bb7766';
-        ctx.fillText('\uD83C\uDF4E ' + agent.inventory.food, hudX + colW * 2, y);
+        ctx.fillText('\uD83C\uDF4E ' + agent.inventory.food, hudX + colW, y);
         y += 20;
 
-        // ── BUILDINGS ──
+        // Tools
+        if (agent.axeTier > 0 || agent.pickaxeTier > 0 || agent.hasHoe) {
+            ctx.fillStyle = '#8a7a60';
+            ctx.font = '10px monospace';
+            var toolStr = '';
+            if (agent.axeTier > 0) toolStr += (agent.axeTier >= 2 ? 'Stone' : 'Wood') + ' Axe  ';
+            if (agent.pickaxeTier > 0) toolStr += (agent.pickaxeTier >= 2 ? 'Stone' : 'Wood') + ' Pick  ';
+            if (agent.hasHoe) toolStr += 'Hoe';
+            ctx.fillText(toolStr.trim(), hudX, y);
+            y += 14;
+        }
+
+        // BUILDINGS
         if (world.buildings.length > 0) {
             this._hudLine(ctx, hudX, y, hudW);
             y += 16;
@@ -1460,8 +1883,7 @@ SB.Renderer = {
             y += 14;
 
             ctx.font = '11px monospace';
-            var buildingIcons = { shelter: '\uD83C\uDFE0', farm: '\uD83C\uDF3E', storage: '\uD83D\uDCE6',
-                well: '\uD83D\uDCA7', workshop: '\uD83D\uDD27', watchtower: '\uD83D\uDDFC' };
+            var buildingIcons = { campfire: '\uD83D\uDD25', workbench: '\uD83D\uDD27', shelter: '\uD83C\uDFE0', bed: '\uD83D\uDECF', farm: '\uD83C\uDF3E', well: '\uD83D\uDCA7', furnace: '\u2668\uFE0F', smokehouse: '\uD83C\uDF2B\uFE0F', storage: '\uD83D\uDCE6', workshop: '\uD83D\uDD28' };
             var bx = hudX;
             for (var bhi = 0; bhi < world.buildings.length; bhi++) {
                 var bld = world.buildings[bhi];
@@ -1481,7 +1903,7 @@ SB.Renderer = {
             y += 20;
         }
 
-        // ── EXPLORATION ──
+        // EXPLORATION
         this._hudLine(ctx, hudX, y, hudW);
         y += 16;
 
@@ -1510,14 +1932,19 @@ SB.Renderer = {
         }
         y += 8;
 
-        // ── THOUGHTS ──
+        // THOUGHTS
         if (agent.thoughts && agent.thoughts.length > 0) {
             this._hudLine(ctx, hudX, y, hudW);
             y += 16;
 
             ctx.fillStyle = '#9a8868';
             ctx.font = 'bold 10px monospace';
-            ctx.fillText('THOUGHTS', hudX, y);
+            var thoughtsLabel = 'THOUGHTS';
+            if (SB.LLM && SB.LLM.available) {
+                thoughtsLabel = 'AI THOUGHTS';
+                ctx.fillStyle = '#6aaa88';
+            }
+            ctx.fillText(thoughtsLabel, hudX, y);
             y += 14;
 
             ctx.font = '10px monospace';
@@ -1533,7 +1960,7 @@ SB.Renderer = {
             y += 4;
         }
 
-        // ── KNOWLEDGE ──
+        // KNOWLEDGE
         if (agent.knowledge && agent.knowledge.length > 0) {
             this._hudLine(ctx, hudX, y, hudW);
             y += 16;
@@ -1558,7 +1985,7 @@ SB.Renderer = {
             y += 18;
         }
 
-        // ── LOG ──
+        // LOG
         this._hudLine(ctx, hudX, y, hudW);
         y += 18;
 
@@ -1578,7 +2005,6 @@ SB.Renderer = {
             ctx.fillText(logText, hudX, y);
             y += 14;
         }
-
     },
 
     _hudLine: function(ctx, x, y, w) {
