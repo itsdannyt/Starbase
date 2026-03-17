@@ -737,66 +737,126 @@ SB.Renderer = {
     // ISLAND UNDERSIDE (one massive rock formation)
     // ═══════════════════════════════════════════
 
-    // No global underside shape — per-tile cliff handles everything
-    _drawIslandUnderside: function(ctx, world) {},
+    // Massive underside: oversized wall + tapered cone (drawn before ground tiles)
+    _drawIslandUnderside: function(ctx, world) {
+        var hw = SB.ISO_TW / 2;
+        var hh = SB.ISO_TH / 2;
+        var cx = Math.floor(SB.WORLD_WIDTH / 2);
+        var cy = Math.floor(SB.WORLD_HEIGHT / 2);
+        var center = this.tileToScreen(cx, cy);
 
-    // Per-tile cliff wall — thick rock face with strata bands
+        // Oversized so ground tiles cover the excess on top
+        var isoRX = 52 * hw * 1.5;
+        var isoRY = 52 * hh * 1.5;
+        var wallH = 80;
+
+        // 1) Thick rock wall band — same depth everywhere
+        // SW wall face (lit)
+        ctx.fillStyle = '#5a4a38';
+        ctx.beginPath();
+        ctx.moveTo(center.x - isoRX, center.y);
+        ctx.lineTo(center.x, center.y + isoRY);
+        ctx.lineTo(center.x, center.y + isoRY + wallH);
+        ctx.lineTo(center.x - isoRX, center.y + wallH);
+        ctx.closePath();
+        ctx.fill();
+        // SE wall face (shadow)
+        ctx.fillStyle = '#3a2a1e';
+        ctx.beginPath();
+        ctx.moveTo(center.x, center.y + isoRY);
+        ctx.lineTo(center.x + isoRX, center.y);
+        ctx.lineTo(center.x + isoRX, center.y + wallH);
+        ctx.lineTo(center.x, center.y + isoRY + wallH);
+        ctx.closePath();
+        ctx.fill();
+
+        // Strata lines on wall
+        ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+        ctx.lineWidth = 1;
+        for (var s = 1; s <= 3; s++) {
+            var sy = center.y + wallH * s * 0.25;
+            ctx.beginPath();
+            ctx.moveTo(center.x - isoRX + 10, sy);
+            ctx.lineTo(center.x - 10, sy + isoRY);
+            ctx.stroke();
+        }
+        ctx.strokeStyle = 'rgba(0,0,0,0.10)';
+        for (var s = 1; s <= 2; s++) {
+            var sy = center.y + wallH * s * 0.33;
+            ctx.beginPath();
+            ctx.moveTo(center.x + 10, sy + isoRY);
+            ctx.lineTo(center.x + isoRX - 10, sy);
+            ctx.stroke();
+        }
+
+        // 2) Below wall: tapered cone converging to a point
+        var taperDepth = 350;
+        var bandCount = 14;
+        for (var i = 0; i < bandCount; i++) {
+            var t0 = i / bandCount;
+            var t1 = (i + 1) / bandCount;
+            var scale0 = 1.0 - t0 * t0 * 0.97;
+            var scale1 = 1.0 - t1 * t1 * 0.97;
+            var d0 = wallH + t0 * taperDepth;
+            var d1 = wallH + t1 * taperDepth;
+            var rx0 = isoRX * scale0, ry0 = isoRY * scale0;
+            var rx1 = isoRX * scale1, ry1 = isoRY * scale1;
+            var cy0 = center.y + d0, cy1 = center.y + d1;
+
+            var brightness = 38 - t0 * 34;
+            // SW taper
+            ctx.fillStyle = 'rgb(' + Math.max(Math.floor(brightness * 1.0), 4) + ',' +
+                Math.max(Math.floor(brightness * 0.75), 3) + ',' +
+                Math.max(Math.floor(brightness * 0.55), 2) + ')';
+            ctx.beginPath();
+            ctx.moveTo(center.x - rx0, cy0);
+            ctx.lineTo(center.x, cy0 + ry0);
+            ctx.lineTo(center.x, cy1 + ry1);
+            ctx.lineTo(center.x - rx1, cy1);
+            ctx.closePath();
+            ctx.fill();
+            // SE taper
+            ctx.fillStyle = 'rgb(' + Math.max(Math.floor(brightness * 0.6), 3) + ',' +
+                Math.max(Math.floor(brightness * 0.45), 2) + ',' +
+                Math.max(Math.floor(brightness * 0.35), 2) + ')';
+            ctx.beginPath();
+            ctx.moveTo(center.x, cy0 + ry0);
+            ctx.lineTo(center.x + rx0, cy0);
+            ctx.lineTo(center.x + rx1, cy1);
+            ctx.lineTo(center.x, cy1 + ry1);
+            ctx.closePath();
+            ctx.fill();
+        }
+        ctx.lineWidth = 1;
+    },
+
+    // Per-tile cliff rim — thin rocky edge detail on top of the underside
     _drawCliffRim: function(ctx, tx, ty, sx, sy) {
         var hw = SB.ISO_TW / 2;
         var hh = SB.ISO_TH / 2;
         var neighbors = SB.World.getVoidNeighbors(tx, ty);
-        var wallH = 40;
+        var rimH = 6;
 
-        // South face (left-front, lit)
         if (neighbors.bottom) {
-            // 3 color bands for layered rock look
-            var bands = [
-                { h: 12, c: '#7a6a55' },
-                { h: 14, c: '#5a4a38' },
-                { h: 14, c: '#3a2a1e' },
-            ];
-            var yOff = 0;
-            for (var i = 0; i < bands.length; i++) {
-                ctx.fillStyle = bands[i].c;
-                ctx.beginPath();
-                ctx.moveTo(sx - hw, sy + yOff);
-                ctx.lineTo(sx, sy + hh + yOff);
-                ctx.lineTo(sx, sy + hh + yOff + bands[i].h);
-                ctx.lineTo(sx - hw, sy + yOff + bands[i].h);
-                ctx.closePath();
-                ctx.fill();
-                yOff += bands[i].h;
-            }
-            // Top edge highlight
-            ctx.strokeStyle = 'rgba(140,120,90,0.3)';
-            ctx.lineWidth = 1;
+            ctx.fillStyle = '#6a5a45';
             ctx.beginPath();
             ctx.moveTo(sx - hw, sy);
             ctx.lineTo(sx, sy + hh);
-            ctx.stroke();
+            ctx.lineTo(sx, sy + hh + rimH);
+            ctx.lineTo(sx - hw, sy + rimH);
+            ctx.closePath();
+            ctx.fill();
         }
-
-        // East face (right-front, shadow — darker)
         if (neighbors.right) {
-            var bands = [
-                { h: 12, c: '#5a4a38' },
-                { h: 14, c: '#3a2a1e' },
-                { h: 14, c: '#2a1e14' },
-            ];
-            var yOff = 0;
-            for (var i = 0; i < bands.length; i++) {
-                ctx.fillStyle = bands[i].c;
-                ctx.beginPath();
-                ctx.moveTo(sx, sy + hh + yOff);
-                ctx.lineTo(sx + hw, sy + yOff);
-                ctx.lineTo(sx + hw, sy + yOff + bands[i].h);
-                ctx.lineTo(sx, sy + hh + yOff + bands[i].h);
-                ctx.closePath();
-                ctx.fill();
-                yOff += bands[i].h;
-            }
+            ctx.fillStyle = '#4a3a2a';
+            ctx.beginPath();
+            ctx.moveTo(sx, sy + hh);
+            ctx.lineTo(sx + hw, sy);
+            ctx.lineTo(sx + hw, sy + rimH);
+            ctx.lineTo(sx, sy + hh + rimH);
+            ctx.closePath();
+            ctx.fill();
         }
-
         ctx.lineWidth = 1;
     },
 

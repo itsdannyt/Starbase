@@ -47,16 +47,9 @@
         #creationScreen.cs-fade-out {
             animation: csFadeOut 0.6s ease forwards;
         }
-        @keyframes csFadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        @keyframes csFadeOut {
-            from { opacity: 1; }
-            to { opacity: 0; }
-        }
+        @keyframes csFadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes csFadeOut { from { opacity: 1; } to { opacity: 0; } }
 
-        /* Stars background via pseudo-elements */
         #creationScreen::before {
             content: '';
             position: absolute;
@@ -83,170 +76,30 @@
             pointer-events: none;
         }
 
-        .cs-content {
-            position: relative;
-            text-align: center;
-            max-width: 520px;
-            width: 90%;
-            padding: 40px 30px;
-        }
-
-        .cs-title {
-            font-size: 42px;
-            font-weight: bold;
-            color: #7aadee;
-            letter-spacing: 8px;
-            text-shadow: 0 0 30px rgba(122,173,238,0.4), 0 0 60px rgba(122,173,238,0.15);
-            margin-bottom: 8px;
-        }
-        .cs-subtitle {
-            font-size: 13px;
-            color: #5577aa;
-            letter-spacing: 4px;
-            margin-bottom: 35px;
-        }
-        .cs-divider {
-            width: 60px;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(122,173,238,0.4), transparent);
-            margin: 0 auto 30px;
-        }
-
-        .cs-label {
-            display: block;
-            color: #8899bb;
-            font-size: 11px;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            margin-bottom: 10px;
-            text-align: left;
-        }
-        .cs-label-traits {
-            margin-top: 25px;
-        }
-
-        .cs-name-row {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 0;
-        }
-        .cs-dice {
-            flex-shrink: 0;
-            width: 46px;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(122,173,238,0.2);
-            border-radius: 8px;
-            font-size: 18px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .cs-dice:hover {
-            background: rgba(122,173,238,0.1);
-            border-color: rgba(122,173,238,0.4);
-        }
-        .cs-label-hint {
-            color: #445566;
-            font-size: 9px;
-            letter-spacing: 1px;
-        }
-        .cs-input {
-            width: 100%;
-            padding: 12px 16px;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(122,173,238,0.2);
-            border-radius: 8px;
-            color: #dde;
-            font-family: monospace;
-            font-size: 16px;
-            outline: none;
-            transition: border-color 0.3s, box-shadow 0.3s;
-        }
-        .cs-input::placeholder {
-            color: #445;
-        }
-        .cs-input:focus {
-            border-color: rgba(122,173,238,0.5);
-            box-shadow: 0 0 15px rgba(122,173,238,0.1);
-        }
-
-        .cs-traits {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-bottom: 30px;
-        }
-
-        .cs-trait {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 14px 8px 10px;
-            background: rgba(255,255,255,0.02);
-            border: 1px solid rgba(122,173,238,0.12);
-            border-radius: 10px;
-            cursor: pointer;
-            transition: all 0.25s ease;
-            user-select: none;
-        }
-        .cs-trait:hover {
-            background: rgba(122,173,238,0.06);
-            border-color: rgba(122,173,238,0.25);
-        }
-        .cs-trait.selected {
-            background: rgba(122,173,238,0.1);
-            border-color: rgba(122,173,238,0.5);
-            box-shadow: 0 0 15px rgba(122,173,238,0.15), inset 0 0 15px rgba(122,173,238,0.05);
-        }
-        .cs-trait-icon {
-            font-size: 22px;
-            margin-bottom: 5px;
-        }
-        .cs-trait-name {
-            color: #ccd;
-            font-size: 12px;
-            font-weight: bold;
-            margin-bottom: 3px;
-        }
-        .cs-trait-desc {
-            color: #667;
-            font-size: 9px;
-            line-height: 1.3;
-        }
-
-        .cs-launch {
-            width: 100%;
-            padding: 14px;
-            background: linear-gradient(135deg, #3a5588, #2a4070);
-            border: 1px solid rgba(122,173,238,0.3);
-            border-radius: 10px;
-            color: #aaccee;
-            font-family: monospace;
-            font-size: 14px;
-            font-weight: bold;
-            letter-spacing: 3px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        .cs-launch:hover:not(:disabled) {
-            background: linear-gradient(135deg, #4a6598, #3a5080);
-            box-shadow: 0 0 25px rgba(122,173,238,0.2);
-            border-color: rgba(122,173,238,0.5);
-        }
-        .cs-launch {
-            animation: csPulse 2s ease-in-out infinite;
-        }
-        @keyframes csPulse {
-            0%, 100% { box-shadow: 0 0 5px rgba(122,173,238,0.1); }
-            50% { box-shadow: 0 0 20px rgba(122,173,238,0.25); }
-        }
-
-        .cs-hint {
-            display: block;
-            color: #445;
-            font-size: 9px;
-            margin-top: 15px;
-            letter-spacing: 1px;
-        }
+        .cs-content { position: relative; text-align: center; max-width: 520px; width: 90%; padding: 40px 30px; }
+        .cs-title { font-size: 42px; font-weight: bold; color: #7aadee; letter-spacing: 8px; text-shadow: 0 0 30px rgba(122,173,238,0.4), 0 0 60px rgba(122,173,238,0.15); margin-bottom: 8px; }
+        .cs-subtitle { font-size: 13px; color: #5577aa; letter-spacing: 4px; margin-bottom: 35px; }
+        .cs-divider { width: 60px; height: 1px; background: linear-gradient(90deg, transparent, rgba(122,173,238,0.4), transparent); margin: 0 auto 30px; }
+        .cs-label { display: block; color: #8899bb; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 10px; text-align: left; }
+        .cs-label-traits { margin-top: 25px; }
+        .cs-name-row { display: flex; gap: 8px; margin-bottom: 0; }
+        .cs-dice { flex-shrink: 0; width: 46px; background: rgba(255,255,255,0.04); border: 1px solid rgba(122,173,238,0.2); border-radius: 8px; font-size: 18px; cursor: pointer; transition: all 0.2s; }
+        .cs-dice:hover { background: rgba(122,173,238,0.1); border-color: rgba(122,173,238,0.4); }
+        .cs-label-hint { color: #445566; font-size: 9px; letter-spacing: 1px; }
+        .cs-input { width: 100%; padding: 12px 16px; background: rgba(255,255,255,0.04); border: 1px solid rgba(122,173,238,0.2); border-radius: 8px; color: #dde; font-family: monospace; font-size: 16px; outline: none; transition: border-color 0.3s, box-shadow 0.3s; }
+        .cs-input::placeholder { color: #445; }
+        .cs-input:focus { border-color: rgba(122,173,238,0.5); box-shadow: 0 0 15px rgba(122,173,238,0.1); }
+        .cs-traits { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 30px; }
+        .cs-trait { display: flex; flex-direction: column; align-items: center; padding: 14px 8px 10px; background: rgba(255,255,255,0.02); border: 1px solid rgba(122,173,238,0.12); border-radius: 10px; cursor: pointer; transition: all 0.25s ease; user-select: none; }
+        .cs-trait:hover { background: rgba(122,173,238,0.06); border-color: rgba(122,173,238,0.25); }
+        .cs-trait.selected { background: rgba(122,173,238,0.1); border-color: rgba(122,173,238,0.5); box-shadow: 0 0 15px rgba(122,173,238,0.15), inset 0 0 15px rgba(122,173,238,0.05); }
+        .cs-trait-icon { font-size: 22px; margin-bottom: 5px; }
+        .cs-trait-name { color: #ccd; font-size: 12px; font-weight: bold; margin-bottom: 3px; }
+        .cs-trait-desc { color: #667; font-size: 9px; line-height: 1.3; }
+        .cs-launch { width: 100%; padding: 14px; background: linear-gradient(135deg, #3a5588, #2a4070); border: 1px solid rgba(122,173,238,0.3); border-radius: 10px; color: #aaccee; font-family: monospace; font-size: 14px; font-weight: bold; letter-spacing: 3px; cursor: pointer; transition: all 0.3s ease; animation: csPulse 2s ease-in-out infinite; }
+        .cs-launch:hover:not(:disabled) { background: linear-gradient(135deg, #4a6598, #3a5080); box-shadow: 0 0 25px rgba(122,173,238,0.2); border-color: rgba(122,173,238,0.5); }
+        @keyframes csPulse { 0%, 100% { box-shadow: 0 0 5px rgba(122,173,238,0.1); } 50% { box-shadow: 0 0 20px rgba(122,173,238,0.25); } }
+        .cs-hint { display: block; color: #445; font-size: 9px; margin-top: 15px; letter-spacing: 1px; }
     </style>
 </head>
 <body>
@@ -256,16 +109,13 @@
             <h1 class="cs-title">STARBASE</h1>
             <p class="cs-subtitle">AI Survival World</p>
             <div class="cs-divider"></div>
-
             <label class="cs-label">Name Your Agent</label>
             <div class="cs-name-row">
                 <input type="text" id="agentNameInput" class="cs-input" placeholder="Enter a name..." maxlength="16" autocomplete="off" spellcheck="false">
                 <button id="randomizeNameBtn" class="cs-dice" title="Random name">&#x1F3B2;</button>
             </div>
-
             <label class="cs-label cs-label-traits">Personality Traits <span class="cs-label-hint">(tap to change)</span></label>
             <div id="traitGrid" class="cs-traits"></div>
-
             <button id="launchBtn" class="cs-launch">LAUNCH AGENT</button>
             <span class="cs-hint">Your agent starts with no skills and learns through exploration</span>
         </div>
